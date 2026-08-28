@@ -1,0 +1,10 @@
+import { Router } from 'express';
+import { authenticateUser, requireSeller } from '../middleware/auth.js';
+import { createOrder, listBuyerOrders, listSellerOrders, updateOrderStatus } from '../controllers/orderController.js';
+const router = Router();
+router.use(authenticateUser);
+router.post('/', createOrder);
+router.get('/mine', listBuyerOrders);
+router.get('/seller', requireSeller, listSellerOrders);
+router.patch('/:id/status', requireSeller, updateOrderStatus);
+export default router;

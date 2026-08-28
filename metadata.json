@@ -1,0 +1,6 @@
+{
+  "name": "Claymarket",
+  "description": "Local market discovery and shop marketplace connecting buyers with neighborhood markets, shops, and sellers.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

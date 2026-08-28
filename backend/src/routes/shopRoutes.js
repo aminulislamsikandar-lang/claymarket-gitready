@@ -1,0 +1,10 @@
+import { Router } from 'express';
+import { listShops, getShop, createShop, updateShop, deleteShop } from '../controllers/shopController.js';
+import { authenticateUser, requireSeller } from '../middleware/auth.js';
+const router = Router();
+router.get('/', listShops);
+router.get('/:id', getShop);
+router.post('/', authenticateUser, requireSeller, createShop);
+router.put('/:id', authenticateUser, requireSeller, updateShop);
+router.delete('/:id', authenticateUser, requireSeller, deleteShop);
+export default router;

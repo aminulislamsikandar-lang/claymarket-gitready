@@ -1,0 +1,106 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function validUserRole(role) {
+      return role in ['buyer', 'seller'];
+    }
+
+    match /users/{uid} {
+      allow create: if isOwner(uid)
+        && validUserRole(request.resource.data.role)
+        && request.resource.data.email == request.auth.token.email;
+
+      allow read: if isOwner(uid);
+
+      // A client can edit its own profile without changing roles. A signed-in
+      // buyer may atomically promote to seller only when the same batch creates
+      // a shop owned by that UID. This keeps seller onboarding secure without
+      // requiring the user to create a second Firebase Auth account.
+      allow update: if isOwner(uid)
+        && validUserRole(request.resource.data.role)
+        && (
+          request.resource.data.role == resource.data.role
+          || (
+            resource.data.role == 'buyer'
+            && request.resource.data.role == 'seller'
+            && request.resource.data.shopId == ('shop_' + request.auth.uid)
+            && getAfter(
+              /databases/$(database)/documents/shops/$(request.resource.data.shopId)
+            ).data.ownerId == request.auth.uid
+          )
+        );
+
+      allow delete: if isOwner(uid);
+    }
+
+    // Marketplace reference data is public. Writes are intentionally backend/admin-only.
+    match /markets/{marketId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Public shop discovery. Only the authenticated owner can create/update/delete
+    // their own shop, and ownership can never be transferred through an update.
+    match /shops/{shopId} {
+      allow read: if true;
+      allow create: if signedIn()
+        && request.resource.data.ownerId == request.auth.uid;
+      allow update: if signedIn()
+        && resource.data.ownerId == request.auth.uid
+        && request.resource.data.ownerId == request.auth.uid;
+      allow delete: if signedIn()
+        && resource.data.ownerId == request.auth.uid;
+    }
+
+    // Published products are public. Sellers can manage only their own products,
+    // and only within a shop they actually own (prevents attaching a product to
+    // someone else's shopId).
+    match /products/{productId} {
+      allow read: if resource.data.status == 'published'
+        || (signedIn() && resource.data.sellerId == request.auth.uid);
+
+      allow create: if signedIn()
+        && request.resource.data.sellerId == request.auth.uid
+        && request.resource.data.shopId is string
+        && get(/databases/$(database)/documents/shops/$(request.resource.data.shopId)).data.ownerId == request.auth.uid;
+
+      allow update, delete: if signedIn()
+        && resource.data.sellerId == request.auth.uid
+        && request.resource.data.sellerId == request.auth.uid
+        && request.resource.data.shopId == resource.data.shopId;
+    }
+
+    // Buyer/seller transactional data is written through the authenticated
+    // Express API, which verifies Firebase ID tokens with Firebase Admin.
+    match /orders/{orderId} {
+      allow read, write: if false;
+    }
+
+    match /conversations/{conversationId} {
+      allow read, write: if false;
+    }
+
+    match /messages/{messageId} {
+      allow read, write: if false;
+    }
+
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow write: if false;
+    }
+  }
+}
