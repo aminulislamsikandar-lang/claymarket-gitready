@@ -24,16 +24,18 @@ export const AddEditProductModal: React.FC<AddEditProductModalProps> = ({
   defaultMarketId,
   defaultMarketName,
 }) => {
-  const { currentUser, updateProduct, createProduct, showToast, categories } = useApp();
+  const { currentUser, updateProduct, createProduct, showToast, categories, shops } = useApp();
 
   const [title, setTitle] = useState('');
   const [price, setPrice] = useState('');
   const [origPrice, setOrigPrice] = useState('');
   const [stock, setStock] = useState('');
   const [category, setCategory] = useState('');
+  const [shopCategory, setShopCategory] = useState('');
   const [sizes, setSizes] = useState('');
   const [desc, setDesc] = useState('');
   const [productImages, setProductImages] = useState<ProductImageItem[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -43,6 +45,7 @@ export const AddEditProductModal: React.FC<AddEditProductModalProps> = ({
         setOrigPrice(editingProduct.originalPrice !== undefined && editingProduct.originalPrice !== null ? String(editingProduct.originalPrice) : '');
         setStock(editingProduct.stockCount !== undefined && editingProduct.stockCount !== null ? String(editingProduct.stockCount) : '');
         setCategory(editingProduct.categoryId || '');
+        setShopCategory(editingProduct.shopCategoryId || '');
         setSizes(editingProduct.sizes && editingProduct.sizes.length > 0 ? editingProduct.sizes.join(', ') : '');
         setDesc(editingProduct.description || '');
         setProductImages(stringListToImageItems(editingProduct.images || []));
@@ -52,6 +55,7 @@ export const AddEditProductModal: React.FC<AddEditProductModalProps> = ({
         setOrigPrice('');
         setStock('');
         setCategory('');
+        setShopCategory('');
         setSizes('');
         setDesc('');
         setProductImages([]);
@@ -65,9 +69,12 @@ export const AddEditProductModal: React.FC<AddEditProductModalProps> = ({
   const targetShopName = defaultShopName || currentUser.shopName || 'Aminul Slipper Shop';
   const targetMarketId = defaultMarketId || 'mkt_kachumara';
   const targetMarketName = defaultMarketName || 'Kachumara Market';
+  const targetShop = shops.find(s => s.id === targetShopId);
+  const shopCategoryOptions = targetShop?.productCategories || [];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
 
     // 1. Mandatory requirement: At least one photo
     if (productImages.length === 0) {
@@ -101,43 +108,60 @@ export const AddEditProductModal: React.FC<AddEditProductModalProps> = ({
       categoryNameVal = matchedCategory ? matchedCategory.name : undefined;
     }
 
-    if (editingProduct) {
-      // Update existing product
-      updateProduct(editingProduct.id, {
-        name: title.trim(),
-        price: parsedPrice,
-        originalPrice: parsedOrigPrice,
-        categoryId: categoryIdVal,
-        categoryName: categoryNameVal,
-        images: finalImages,
-        description: parsedDesc,
-        stockCount: parsedStock,
-        inStock: parsedStock !== undefined ? parsedStock > 0 : undefined,
-        sizes: parsedSizes,
-        status: editingProduct.status || 'published',
-      });
+    let shopCategoryIdVal: string | undefined = undefined;
+    let shopCategoryNameVal: string | undefined = undefined;
+    if (shopCategory.trim() !== '') {
+      shopCategoryIdVal = shopCategory.trim();
+      const matchedShopCategory = shopCategoryOptions.find(c => c.id === shopCategoryIdVal);
+      shopCategoryNameVal = matchedShopCategory ? matchedShopCategory.name : undefined;
+    }
 
-      onClose();
-      showToast('✓ Product updated successfully', 'success');
-    } else {
-      // Create new product through the centralized context action.
-      createProduct({
-        name: title.trim(),
-        shopId: targetShopId,
-        shopName: targetShopName,
-        marketId: targetMarketId,
-        marketName: targetMarketName,
-        images: finalImages,
-        price: parsedPrice,
-        originalPrice: parsedOrigPrice,
-        categoryId: categoryIdVal,
-        categoryName: categoryNameVal,
-        description: parsedDesc,
-        inStock: parsedStock !== undefined ? parsedStock > 0 : undefined,
-        stockCount: parsedStock,
-        sizes: parsedSizes,
-      });
-      onClose();
+    setIsSubmitting(true);
+    try {
+      if (editingProduct) {
+        // Update existing product. Only close the modal once the write is
+        // confirmed, so a failed save (e.g. Storage not configured) surfaces
+        // clearly instead of silently vanishing.
+        const success = await updateProduct(editingProduct.id, {
+          name: title.trim(),
+          price: parsedPrice,
+          originalPrice: parsedOrigPrice,
+          categoryId: categoryIdVal,
+          categoryName: categoryNameVal,
+          shopCategoryId: shopCategoryIdVal,
+          shopCategoryName: shopCategoryNameVal,
+          images: finalImages,
+          description: parsedDesc,
+          stockCount: parsedStock,
+          inStock: parsedStock !== undefined ? parsedStock > 0 : undefined,
+          sizes: parsedSizes,
+          status: editingProduct.status || 'published',
+        });
+        if (success) onClose();
+      } else {
+        // Create new product through the centralized context action.
+        const success = await createProduct({
+          name: title.trim(),
+          shopId: targetShopId,
+          shopName: targetShopName,
+          marketId: targetMarketId,
+          marketName: targetMarketName,
+          images: finalImages,
+          price: parsedPrice,
+          originalPrice: parsedOrigPrice,
+          categoryId: categoryIdVal,
+          categoryName: categoryNameVal,
+          shopCategoryId: shopCategoryIdVal,
+          shopCategoryName: shopCategoryNameVal,
+          description: parsedDesc,
+          inStock: parsedStock !== undefined ? parsedStock > 0 : undefined,
+          stockCount: parsedStock,
+          sizes: parsedSizes,
+        });
+        if (success) onClose();
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -273,6 +297,26 @@ export const AddEditProductModal: React.FC<AddEditProductModalProps> = ({
             </div>
           </div>
 
+          {/* Shop Category (Optional) - seller's own sub-category, e.g. Men's / Women's / Kids' */}
+          {shopCategoryOptions.length > 0 && (
+            <div>
+              <label className="text-xs font-bold text-[#20243A] block mb-1">
+                Shop Category <span className="text-gray-400 font-normal text-[11px]">(optional — group this item within your shop)</span>
+              </label>
+              <select
+                id="seller-product-shopcategory-select"
+                value={shopCategory}
+                onChange={e => setShopCategory(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#F7F5F3] border border-gray-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#8067E8] transition-all"
+              >
+                <option value="">No shop category</option>
+                {shopCategoryOptions.map(sc => (
+                  <option key={sc.id} value={sc.id}>{sc.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* Sizes / Variants (Optional) */}
           <div>
             <label className="text-xs font-bold text-[#20243A] block mb-1">
@@ -315,13 +359,14 @@ export const AddEditProductModal: React.FC<AddEditProductModalProps> = ({
             <button
               type="submit"
               id="seller-publish-product-btn"
-              className="px-6 py-2.5 rounded-full bg-[#8067E8] hover:bg-[#6E52E2] active:scale-95 text-white font-bold text-xs sm:text-sm shadow-md transition-all cursor-pointer flex items-center gap-2"
+              disabled={isSubmitting}
+              className="px-6 py-2.5 rounded-full bg-[#8067E8] hover:bg-[#6E52E2] active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold text-xs sm:text-sm shadow-md transition-all cursor-pointer flex items-center gap-2"
               style={{
                 boxShadow: '0 4px 14px rgba(128, 103, 232, 0.35), inset 0 1px 2px rgba(255, 255, 255, 0.3)'
               }}
             >
               <PackageCheck className="w-4 h-4" />
-              <span>{editingProduct ? 'Save Changes' : 'Publish Product'}</span>
+              <span>{isSubmitting ? 'Publishing...' : editingProduct ? 'Save Changes' : 'Publish Product'}</span>
             </button>
           </div>
         </form>

@@ -1,25 +1,32 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   ArrowLeft, ChevronRight, Store, MapPin, Phone, Clock, 
   CheckCircle2, MessageSquare, UserPlus, UserCheck, Star, 
   Heart, ShoppingBag, Share2, ShieldCheck, Sparkles, Filter,
-  Plus
+  Plus, Camera, Pencil, Trash2, X, Loader2
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { MOCK_REVIEWS } from '../data/mockData';
 import { Shop, Product } from '../types';
 import { AddEditProductModal } from './AddEditProductModal';
+import { EditShopDetailsModal } from './EditShopDetailsModal';
 
 export const ShopProfileView: React.FC = () => {
   const { 
     currentUser, selectedShop, shops, products, markets, categories, navigateTo, goBack, 
     toggleWishlist, isWishlisted, addToCart, startChatWithShop,
-    toggleFollowShop, isFollowingShop, showToast 
+    toggleFollowShop, isFollowingShop, showToast,
+    updateShopImages, addShopCategory, updateShopCategory, deleteShopCategory,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'products' | 'reviews' | 'photos' | 'about'>('products');
   const [productCategoryFilter, setProductCategoryFilter] = useState<string>('all');
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
+  const [isEditDetailsOpen, setIsEditDetailsOpen] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [isUploadingBanner, setIsUploadingBanner] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const bannerInputRef = useRef<HTMLInputElement>(null);
 
   const shop = selectedShop || shops[0];
   const targetMarket = markets.find(m => m.id === shop.marketId);
@@ -31,9 +38,10 @@ export const ShopProfileView: React.FC = () => {
 
   // Shop products (hide hidden products from public shop)
   const shopProducts = products.filter(p => p.shopId === shop.id && p.status !== 'hidden');
+  const shopCategories = shop.productCategories || [];
   const filteredProducts = productCategoryFilter === 'all'
     ? shopProducts
-    : shopProducts.filter(p => p.categoryId === productCategoryFilter);
+    : shopProducts.filter(p => p.shopCategoryId === productCategoryFilter);
 
   // Reviews for this shop
   const reviews = MOCK_REVIEWS[shop.id] || MOCK_REVIEWS['shop_aminul'];
@@ -48,6 +56,71 @@ export const ShopProfileView: React.FC = () => {
     } else {
       navigator.clipboard?.writeText(window.location.href).then(() => showToast('Shop link copied to clipboard!', 'info'));
     }
+  };
+
+  const DEFAULT_AVATAR_URL = 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=500&auto=format&fit=crop&q=80';
+  const DEFAULT_BANNER_URL = 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1000&auto=format&fit=crop&q=80';
+
+  const handleAvatarFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingAvatar(true);
+    try {
+      await updateShopImages(shop.id, { avatarFile: file });
+    } finally {
+      setIsUploadingAvatar(false);
+      if (avatarInputRef.current) avatarInputRef.current.value = '';
+    }
+  };
+
+  const handleBannerFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingBanner(true);
+    try {
+      await updateShopImages(shop.id, { bannerFile: file });
+    } finally {
+      setIsUploadingBanner(false);
+      if (bannerInputRef.current) bannerInputRef.current.value = '';
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    if (shop.avatar === DEFAULT_AVATAR_URL) return;
+    setIsUploadingAvatar(true);
+    try {
+      await updateShopImages(shop.id, { removeAvatar: true });
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
+
+  const handleRemoveBanner = async () => {
+    if (shop.banner === DEFAULT_BANNER_URL) return;
+    setIsUploadingBanner(true);
+    try {
+      await updateShopImages(shop.id, { removeBanner: true });
+    } finally {
+      setIsUploadingBanner(false);
+    }
+  };
+
+  const handleAddCategory = async () => {
+    const name = window.prompt('New category name (e.g. "Men\'s Wear", "Kids Wear"):');
+    if (name === null) return;
+    await addShopCategory(shop.id, name);
+  };
+
+  const handleRenameCategory = async (categoryId: string, currentName: string) => {
+    const name = window.prompt('Rename category:', currentName);
+    if (name === null) return;
+    await updateShopCategory(shop.id, categoryId, name);
+  };
+
+  const handleDeleteCategory = async (categoryId: string, name: string) => {
+    if (!window.confirm(`Remove category "${name}"? Products in it will become uncategorized.`)) return;
+    if (productCategoryFilter === categoryId) setProductCategoryFilter('all');
+    await deleteShopCategory(shop.id, categoryId);
   };
 
   return (
@@ -106,6 +179,36 @@ export const ShopProfileView: React.FC = () => {
           
           {/* Top Right Actions */}
           <div className="absolute top-4 right-4 flex items-center gap-2">
+            {isOwnerSeller && (
+              <>
+                <input
+                  type="file"
+                  ref={bannerInputRef}
+                  accept="image/jpeg,image/jpg,image/png,image/webp"
+                  className="hidden"
+                  id="shop-banner-file-input"
+                  onChange={handleBannerFileSelected}
+                />
+                <button
+                  onClick={() => bannerInputRef.current?.click()}
+                  disabled={isUploadingBanner}
+                  title="Change cover photo"
+                  className="p-2.5 rounded-full bg-white/80 hover:bg-white text-[#20243A] backdrop-blur-md transition-all shadow-xs cursor-pointer disabled:opacity-60"
+                >
+                  {isUploadingBanner ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
+                </button>
+                {shop.banner !== DEFAULT_BANNER_URL && (
+                  <button
+                    onClick={handleRemoveBanner}
+                    disabled={isUploadingBanner}
+                    title="Remove cover photo"
+                    className="p-2.5 rounded-full bg-white/80 hover:bg-white text-red-500 backdrop-blur-md transition-all shadow-xs cursor-pointer disabled:opacity-60"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+              </>
+            )}
             <button
               onClick={handleShare}
               className="p-2.5 rounded-full bg-white/80 hover:bg-white text-[#20243A] backdrop-blur-md transition-all shadow-xs cursor-pointer"
@@ -121,12 +224,42 @@ export const ShopProfileView: React.FC = () => {
             
             {/* Avatar & Title */}
             <div className="flex items-end gap-4">
-              <div className="relative w-28 h-28 sm:w-32 sm:h-32 rounded-3xl overflow-hidden bg-white ring-4 ring-white shadow-xl shrink-0">
+              <div className="relative w-28 h-28 sm:w-32 sm:h-32 rounded-3xl overflow-hidden bg-white ring-4 ring-white shadow-xl shrink-0 group">
                 <img loading="lazy" decoding="async" 
                   src={shop.avatar} 
                   alt={shop.name}
                   className="w-full h-full object-cover"
                 />
+                {isOwnerSeller && (
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center gap-1.5 opacity-0 group-hover:opacity-100 sm:opacity-100">
+                    <input
+                      type="file"
+                      ref={avatarInputRef}
+                      accept="image/jpeg,image/jpg,image/png,image/webp"
+                      className="hidden"
+                      id="shop-avatar-file-input"
+                      onChange={handleAvatarFileSelected}
+                    />
+                    <button
+                      onClick={() => avatarInputRef.current?.click()}
+                      disabled={isUploadingAvatar}
+                      title="Change profile photo"
+                      className="p-1.5 rounded-full bg-white/90 hover:bg-white text-[#20243A] transition-all shadow-xs cursor-pointer disabled:opacity-60"
+                    >
+                      {isUploadingAvatar ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Camera className="w-3.5 h-3.5" />}
+                    </button>
+                    {shop.avatar !== DEFAULT_AVATAR_URL && (
+                      <button
+                        onClick={handleRemoveAvatar}
+                        disabled={isUploadingAvatar}
+                        title="Remove profile photo"
+                        className="p-1.5 rounded-full bg-white/90 hover:bg-white text-red-500 transition-all shadow-xs cursor-pointer disabled:opacity-60"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="space-y-1">
@@ -269,6 +402,64 @@ export const ShopProfileView: React.FC = () => {
               </button>
             )}
           </div>
+
+          {/* Shop-specific product category chips (e.g. Men's / Women's / Kids Wear) */}
+          {(shopCategories.length > 0 || isOwnerSeller) && (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setProductCategoryFilter('all')}
+                className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                  productCategoryFilter === 'all'
+                    ? 'bg-[#8067E8] text-white shadow-xs'
+                    : 'bg-[#F1EDFD] text-[#553BB8] hover:bg-[#DDD4FF]'
+                }`}
+              >
+                All
+              </button>
+              {shopCategories.map(cat => (
+                <div
+                  key={cat.id}
+                  className={`flex items-center gap-1 pl-3.5 pr-1.5 py-1.5 rounded-full text-xs font-bold transition-all ${
+                    productCategoryFilter === cat.id
+                      ? 'bg-[#8067E8] text-white shadow-xs'
+                      : 'bg-[#F1EDFD] text-[#553BB8] hover:bg-[#DDD4FF]'
+                  }`}
+                >
+                  <button onClick={() => setProductCategoryFilter(cat.id)} className="cursor-pointer">
+                    {cat.name}
+                  </button>
+                  {isOwnerSeller && (
+                    <span className="flex items-center gap-0.5 ml-1">
+                      <button
+                        onClick={() => handleRenameCategory(cat.id, cat.name)}
+                        title="Rename category"
+                        className={`p-1 rounded-full cursor-pointer transition-colors ${productCategoryFilter === cat.id ? 'hover:bg-white/20' : 'hover:bg-[#DDD4FF]'}`}
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteCategory(cat.id, cat.name)}
+                        title="Delete category"
+                        className={`p-1 rounded-full cursor-pointer transition-colors ${productCategoryFilter === cat.id ? 'hover:bg-white/20' : 'hover:bg-[#DDD4FF]'}`}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
+                </div>
+              ))}
+              {isOwnerSeller && (
+                <button
+                  id="shop-add-category-btn"
+                  onClick={handleAddCategory}
+                  className="flex items-center gap-1 px-3.5 py-1.5 rounded-full text-xs font-bold bg-white border border-dashed border-[#8067E8]/40 text-[#8067E8] hover:bg-[#F1EDFD] transition-all cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Add Category
+                </button>
+              )}
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
             {filteredProducts.map((product: Product) => (
@@ -455,11 +646,23 @@ export const ShopProfileView: React.FC = () => {
       {/* TAB CONTENT 4: ABOUT */}
       {activeTab === 'about' && (
         <section className="bg-white rounded-3xl p-6 sm:p-8 border border-white/90 shadow-sm space-y-6 animate-in fade-in duration-150">
-          <div>
-            <h3 className="text-lg font-bold text-[#20243A] mb-2">Shop Story</h3>
-            <p className="text-sm sm:text-base text-[#505767] leading-relaxed">
-              {shop.about}
-            </p>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-bold text-[#20243A] mb-2">Shop Story</h3>
+              <p className="text-sm sm:text-base text-[#505767] leading-relaxed">
+                {shop.about}
+              </p>
+            </div>
+            {isOwnerSeller && (
+              <button
+                id="shop-edit-details-btn"
+                onClick={() => setIsEditDetailsOpen(true)}
+                className="shrink-0 flex items-center gap-1.5 py-2 px-3.5 rounded-full bg-[#F1EDFD] hover:bg-[#DDD4FF] text-[#6C4DE6] font-bold text-xs transition-colors cursor-pointer"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+                <span>Edit Shop Details</span>
+              </button>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-4 border-t border-gray-100">
@@ -495,6 +698,15 @@ export const ShopProfileView: React.FC = () => {
           defaultShopName={shop.name}
           defaultMarketId={shop.marketId}
           defaultMarketName={shop.marketName}
+        />
+      )}
+
+      {/* Edit Shop Details Modal for Seller */}
+      {isOwnerSeller && (
+        <EditShopDetailsModal
+          isOpen={isEditDetailsOpen}
+          onClose={() => setIsEditDetailsOpen(false)}
+          shop={shop}
         />
       )}
 

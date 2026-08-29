@@ -64,6 +64,12 @@ export interface Shop {
   openingHours?: string;
   iconBg?: string;
   iconType?: string;
+  productCategories?: ShopProductCategory[];
+}
+
+export interface ShopProductCategory {
+  id: string;
+  name: string;
 }
 
 export interface ProductColor {
@@ -86,6 +92,8 @@ export interface Product {
   marketName: string;
   categoryId?: string;
   categoryName?: string;
+  shopCategoryId?: string;
+  shopCategoryName?: string;
   state?: string;
   district?: string;
   name: string;
