@@ -25,6 +25,7 @@ const ProductDetailView = lazy(() => import('./components/ProductDetailView').th
 const OrdersView = lazy(() => import('./components/OrdersView').then(m => ({ default: m.OrdersView })));
 const WishlistView = lazy(() => import('./components/WishlistView').then(m => ({ default: m.WishlistView })));
 const SellerDashboardView = lazy(() => import('./components/SellerDashboardView').then(m => ({ default: m.SellerDashboardView })));
+const AdminDashboardView = lazy(() => import('./components/AdminDashboardView').then(m => ({ default: m.AdminDashboardView })));
 const UserProfileView = lazy(() => import('./components/UserProfileView').then(m => ({ default: m.UserProfileView })));
 const MarketsListPage = lazy(() => import('./components/Pages').then(m => ({ default: m.MarketsListPage })));
 const ShopsListPage = lazy(() => import('./components/Pages').then(m => ({ default: m.ShopsListPage })));
@@ -67,6 +68,8 @@ const AppContent: React.FC = () => {
         return <WishlistView />;
       case 'seller-dashboard':
         return <SellerDashboardView />;
+      case 'admin-dashboard':
+        return <AdminDashboardView />;
       case 'profile':
       case 'saved-addresses':
       case 'settings':

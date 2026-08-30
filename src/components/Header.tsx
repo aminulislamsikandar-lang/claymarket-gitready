@@ -67,7 +67,7 @@ export const Header: React.FC = () => {
               <span className="font-extrabold text-2xl font-sans tracking-tight">C</span>
             </div>
             <div>
-              <span className="text-2xl font-extrabold text-[#20243A] tracking-tight group-hover:text-[#8067E8] transition-colors">
+              <span className="text-xl sm:text-2xl font-extrabold text-[#20243A] tracking-tight group-hover:text-[#8067E8] transition-colors">
                 claymarket
               </span>
               <p className="text-[11px] text-[#737B89] font-medium -mt-1 tracking-normal">
@@ -122,8 +122,8 @@ export const Header: React.FC = () => {
               )}
             </button>
 
-            {/* Notifications Bell */}
-            <div className="relative" ref={notifRef}>
+            {/* Notifications Bell (hidden on the smallest screens to prevent header overflow; still reachable from sm: up) */}
+            <div className="relative hidden sm:block" ref={notifRef}>
               <button
                 id="header-notifications-btn"
                 onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
@@ -172,12 +172,12 @@ export const Header: React.FC = () => {
               )}
             </div>
 
-            {/* Wishlist Heart */}
+            {/* Wishlist Heart (hidden on the smallest screens to prevent header overflow; still reachable from sm: up) */}
             <button
               id="header-wishlist-btn"
               onClick={() => navigateTo('wishlist')}
               aria-label="Wishlist"
-              className="relative p-2.5 rounded-full bg-white hover:bg-gray-50 text-[#20243A] border border-gray-200/70 shadow-xs hover:shadow-sm transition-all"
+              className="hidden sm:inline-flex relative p-2.5 rounded-full bg-white hover:bg-gray-50 text-[#20243A] border border-gray-200/70 shadow-xs hover:shadow-sm transition-all"
               style={{
                 boxShadow: '0 2px 6px rgba(0,0,0,0.03), inset 0 1px 1px #fff'
               }}
@@ -217,7 +217,7 @@ export const Header: React.FC = () => {
                     <div className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center">
                       <UserIcon className="w-4 h-4" />
                     </div>
-                    <span className="text-sm font-semibold text-[#20243A]">Guest</span>
+                    <span className="hidden sm:inline text-sm font-semibold text-[#20243A]">Guest</span>
                   </>
                 ) : (
                   <>
@@ -226,7 +226,7 @@ export const Header: React.FC = () => {
                       alt={currentUser.name} 
                       className="w-7 h-7 rounded-full object-cover ring-1 ring-[#DDD4FF]" 
                     />
-                    <span className="text-sm font-semibold text-[#20243A] max-w-[90px] truncate">
+                    <span className="hidden sm:inline text-sm font-semibold text-[#20243A] max-w-[90px] truncate">
                       {currentUser.name.split(' ')[0]}
                     </span>
                   </>

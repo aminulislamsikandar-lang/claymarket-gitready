@@ -3,22 +3,22 @@ import { ShieldCheck, MessageSquare, Users, Lock } from 'lucide-react';
 
 export const AboutUsSection: React.FC = () => {
   return (
-    <section className="py-8">
+    <section className="py-4 sm:py-8">
       <div 
-        className="relative rounded-3xl p-6 sm:p-8 lg:p-10 border border-white/95 shadow-sm overflow-hidden"
+        className="relative rounded-xl sm:rounded-3xl p-4 sm:p-8 lg:p-10 border border-white/95 shadow-sm overflow-hidden"
         style={{
           background: 'linear-gradient(135deg, #FAF7FD 0%, #F5F1FD 45%, #EBE6FC 100%)',
           boxShadow: '0 16px 36px -10px rgba(128, 103, 232, 0.08), inset 0 2px 4px rgba(255, 255, 255, 0.95)'
         }}
       >
-        {/* Soft background glow circles */}
-        <div className="absolute -top-10 -right-10 w-48 h-48 bg-[#DDD4FF]/50 rounded-full blur-2xl pointer-events-none" />
-        <div className="absolute -bottom-10 -left-10 w-48 h-48 bg-[#CBE4FF]/40 rounded-full blur-2xl pointer-events-none" />
+        {/* Soft background glow circles (desktop only — flat/clean on mobile) */}
+        <div className="hidden sm:block absolute -top-10 -right-10 w-48 h-48 bg-[#DDD4FF]/50 rounded-full blur-2xl pointer-events-none" />
+        <div className="hidden sm:block absolute -bottom-10 -left-10 w-48 h-48 bg-[#CBE4FF]/40 rounded-full blur-2xl pointer-events-none" />
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-8 items-center">
           
-          {/* Left Graphic: Claymarket Community Illustration */}
-          <div className="lg:col-span-4 flex justify-center">
+          {/* Left Graphic: Claymarket Community Illustration (desktop only) */}
+          <div className="hidden lg:flex lg:col-span-4 justify-center">
             <div className="relative w-full max-w-[280px]">
               <svg viewBox="0 0 280 200" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-auto drop-shadow-sm">
                 <defs>
@@ -68,60 +68,60 @@ export const AboutUsSection: React.FC = () => {
           </div>
 
           {/* Right Info: Heading, Description & 4 Pillars */}
-          <div className="lg:col-span-8 space-y-5">
+          <div className="lg:col-span-8 space-y-2.5 sm:space-y-5">
             <div>
-              <h3 className="text-2xl sm:text-3xl font-extrabold text-[#20243A] tracking-tight mb-2">
+              <h3 className="text-base sm:text-3xl font-extrabold text-[#20243A] tracking-tight mb-1 sm:mb-2">
                 About Us
               </h3>
-              <p className="text-sm sm:text-base text-[#505767] font-medium leading-relaxed max-w-3xl">
+              <p className="text-xs sm:text-base text-[#505767] font-medium leading-relaxed max-w-3xl">
                 Claymarket is your trusted local marketplace to discover the best markets, shops and products in your area. We connect local sellers with local buyers and support small businesses to grow digitally.
               </p>
             </div>
 
             {/* 4 Feature Badges */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2">
+            <div className="grid grid-cols-2 sm:grid-cols-2 gap-2 sm:gap-3.5 pt-1 sm:pt-2">
               
               {/* Feature 1 */}
-              <div className="flex items-center gap-3.5 p-3 rounded-2xl bg-white/80 border border-white shadow-xs backdrop-blur-xs">
-                <div className="w-10 h-10 rounded-xl bg-[#DDD4FF] text-[#553BB8] flex items-center justify-center shrink-0 shadow-xs">
-                  <ShieldCheck className="w-5 h-5" />
+              <div className="flex items-center gap-2 sm:gap-3.5 p-2 sm:p-3 rounded-lg sm:rounded-2xl bg-white/80 border border-white shadow-xs backdrop-blur-xs">
+                <div className="w-7 h-7 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-[#DDD4FF] text-[#553BB8] flex items-center justify-center shrink-0 shadow-xs">
+                  <ShieldCheck className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
                 </div>
-                <div>
-                  <h4 className="text-sm font-bold text-[#20243A]">Local & Trusted</h4>
-                  <p className="text-xs text-[#737B89]">Verified markets and shops in your area.</p>
+                <div className="min-w-0">
+                  <h4 className="text-[11px] sm:text-sm font-bold text-[#20243A] leading-tight">Local & Trusted</h4>
+                  <p className="text-[9px] leading-tight sm:text-xs text-[#737B89] line-clamp-2 sm:line-clamp-none">Verified markets and shops in your area.</p>
                 </div>
               </div>
 
               {/* Feature 2 */}
-              <div className="flex items-center gap-3.5 p-3 rounded-2xl bg-white/80 border border-white shadow-xs backdrop-blur-xs">
-                <div className="w-10 h-10 rounded-xl bg-[#CBE4FF] text-[#1B5899] flex items-center justify-center shrink-0 shadow-xs">
-                  <MessageSquare className="w-5 h-5" />
+              <div className="flex items-center gap-2 sm:gap-3.5 p-2 sm:p-3 rounded-lg sm:rounded-2xl bg-white/80 border border-white shadow-xs backdrop-blur-xs">
+                <div className="w-7 h-7 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-[#CBE4FF] text-[#1B5899] flex items-center justify-center shrink-0 shadow-xs">
+                  <MessageSquare className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
                 </div>
-                <div>
-                  <h4 className="text-sm font-bold text-[#20243A]">Easy to Connect</h4>
-                  <p className="text-xs text-[#737B89]">Chat with sellers and get what you need.</p>
+                <div className="min-w-0">
+                  <h4 className="text-[11px] sm:text-sm font-bold text-[#20243A] leading-tight">Easy to Connect</h4>
+                  <p className="text-[9px] leading-tight sm:text-xs text-[#737B89] line-clamp-2 sm:line-clamp-none">Chat with sellers and get what you need.</p>
                 </div>
               </div>
 
               {/* Feature 3 */}
-              <div className="flex items-center gap-3.5 p-3 rounded-2xl bg-white/80 border border-white shadow-xs backdrop-blur-xs">
-                <div className="w-10 h-10 rounded-xl bg-[#CBEFD9] text-[#176F43] flex items-center justify-center shrink-0 shadow-xs">
-                  <Users className="w-5 h-5" />
+              <div className="flex items-center gap-2 sm:gap-3.5 p-2 sm:p-3 rounded-lg sm:rounded-2xl bg-white/80 border border-white shadow-xs backdrop-blur-xs">
+                <div className="w-7 h-7 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-[#CBEFD9] text-[#176F43] flex items-center justify-center shrink-0 shadow-xs">
+                  <Users className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
                 </div>
-                <div>
-                  <h4 className="text-sm font-bold text-[#20243A]">Support Local</h4>
-                  <p className="text-xs text-[#737B89]">We help local businesses grow digitally.</p>
+                <div className="min-w-0">
+                  <h4 className="text-[11px] sm:text-sm font-bold text-[#20243A] leading-tight">Support Local</h4>
+                  <p className="text-[9px] leading-tight sm:text-xs text-[#737B89] line-clamp-2 sm:line-clamp-none">We help local businesses grow digitally.</p>
                 </div>
               </div>
 
               {/* Feature 4 */}
-              <div className="flex items-center gap-3.5 p-3 rounded-2xl bg-white/80 border border-white shadow-xs backdrop-blur-xs">
-                <div className="w-10 h-10 rounded-xl bg-[#FFD9C7] text-[#A03D12] flex items-center justify-center shrink-0 shadow-xs">
-                  <Lock className="w-5 h-5" />
+              <div className="flex items-center gap-2 sm:gap-3.5 p-2 sm:p-3 rounded-lg sm:rounded-2xl bg-white/80 border border-white shadow-xs backdrop-blur-xs">
+                <div className="w-7 h-7 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-[#FFD9C7] text-[#A03D12] flex items-center justify-center shrink-0 shadow-xs">
+                  <Lock className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
                 </div>
-                <div>
-                  <h4 className="text-sm font-bold text-[#20243A]">Safe & Secure</h4>
-                  <p className="text-xs text-[#737B89]">Your data and payments are always protected.</p>
+                <div className="min-w-0">
+                  <h4 className="text-[11px] sm:text-sm font-bold text-[#20243A] leading-tight">Safe & Secure</h4>
+                  <p className="text-[9px] leading-tight sm:text-xs text-[#737B89] line-clamp-2 sm:line-clamp-none">Your data and payments are always protected.</p>
                 </div>
               </div>
 

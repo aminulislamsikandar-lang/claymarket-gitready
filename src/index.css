@@ -160,6 +160,16 @@
 :focus-visible { outline: 3px solid #8067E8; outline-offset: 3px; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; } }
 
+/* Hide scrollbar for mobile horizontal-scroll strips (e.g. category chips)
+   while keeping the element scrollable. */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* Broken-image fallback (see src/main.tsx) — keep it visually calm instead of
    a stretched/pixelated placeholder graphic. */
 img.claymarket-img-fallback {

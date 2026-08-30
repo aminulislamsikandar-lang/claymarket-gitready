@@ -10,6 +10,7 @@ import { MOCK_REVIEWS } from '../data/mockData';
 import { Shop, Product } from '../types';
 import { AddEditProductModal } from './AddEditProductModal';
 import { EditShopDetailsModal } from './EditShopDetailsModal';
+import { EMPTY_SHOP_FALLBACK } from '../utils/fallbacks';
 
 export const ShopProfileView: React.FC = () => {
   const { 
@@ -28,7 +29,7 @@ export const ShopProfileView: React.FC = () => {
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
 
-  const shop = selectedShop || shops[0];
+  const shop = selectedShop || shops[0] || EMPTY_SHOP_FALLBACK;
   const targetMarket = markets.find(m => m.id === shop.marketId);
   const targetCategory = categories.find(c => c.id === shop.categoryId);
   const isFollowing = isFollowingShop(shop.id);

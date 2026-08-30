@@ -3,7 +3,7 @@ import {
   User as UserIcon, Package, Heart, MessageSquare, MapPin, 
   Bell, Store, LayoutDashboard, Settings, HelpCircle, 
   LogOut, ChevronRight, Sparkles, LogIn, UserPlus, Info, 
-  Layers, ShoppingBag
+  Layers, ShoppingBag, ShieldCheck
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
@@ -166,6 +166,7 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ isOpen, onClos
 
   // LOGGED-IN (BUYER ONLY / SELLER + BUYER) (Image 2)
   const isSeller = currentUser.role === 'seller';
+  const isAdmin = currentUser.role === 'admin';
 
   return (
     <div 
@@ -194,7 +195,7 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ isOpen, onClos
               {currentUser.name}
             </h4>
             <p className="text-xs text-[#737B89] font-medium mt-0.5">
-              {isSeller ? 'Seller • Buyer' : 'Buyer'}
+              {isAdmin ? 'Admin' : isSeller ? 'Seller • Buyer' : 'Buyer'}
             </p>
           </div>
         </div>
@@ -283,6 +284,28 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ isOpen, onClos
           <span>Notifications</span>
         </button>
       </div>
+
+      {/* ADMIN-ONLY SECTION */}
+      {isAdmin && (
+        <div className="py-2.5 border-t border-gray-100">
+          <button
+            id="dropdown-admin-panel-btn"
+            onClick={() => {
+              onClose();
+              navigateTo('admin-dashboard');
+            }}
+            className="w-full flex items-start gap-3.5 p-2.5 rounded-2xl bg-[#FEF3E8] hover:bg-[#FCE8D4] transition-colors text-left group"
+          >
+            <div className="w-8 h-8 rounded-xl bg-[#F5C88A] text-[#8A5A1E] flex items-center justify-center shrink-0 mt-0.5">
+              <ShieldCheck className="w-4 h-4" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-[#20243A]">Admin Panel</p>
+              <p className="text-xs text-[#8A5A1E] font-semibold">Manage markets</p>
+            </div>
+          </button>
+        </div>
+      )}
 
       {/* SELLER SPECIFIC SECTION OR BECOME A SELLER CARD */}
       <div className="py-2.5 border-t border-gray-100">

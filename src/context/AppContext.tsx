@@ -4,8 +4,8 @@ import {
   Conversation, ChatMessage, Order, CartItem, AppView, NavigationTab 
 } from '../types';
 import { 
-  MOCK_USERS, MOCK_MARKETS, MOCK_SHOPS, MOCK_PRODUCTS, 
-  MOCK_CATEGORIES, INITIAL_CONVERSATIONS, INITIAL_ORDERS 
+  MOCK_USERS, MOCK_PRODUCTS, 
+  MOCK_CATEGORIES, INITIAL_ORDERS 
 } from '../data/mockData';
 import { apiRequest, clearAuthToken, setAuthToken } from '../utils/api';
 import { firebaseAuthClient, firebaseDb, firebaseConfigured } from '../firebase';
@@ -82,6 +82,8 @@ interface AppContextType {
 
   // Data Collections
   markets: Market[];
+  addMarketAdmin: (input: { name: string; location: string; description: string; bannerImage?: string }) => Promise<void>;
+  deleteMarketAdmin: (marketId: string) => Promise<void>;
   shops: Shop[];
   products: Product[];
   categories: Category[];
@@ -174,7 +176,7 @@ const buildFirebaseFallbackUser = (firebaseUser: FirebaseUser): User => {
   let cachedShop: Partial<Shop> | undefined;
 
   try {
-    const savedShops = localStorage.getItem('claymarket_shops');
+    const savedShops = localStorage.getItem('claymarket_shops_v2');
     if (savedShops) {
       const shops = JSON.parse(savedShops);
       if (Array.isArray(shops)) {
@@ -261,6 +263,18 @@ const markConversationRead = (conversationId: string) => {
     // Best-effort only; unread badges simply won't clear on this device.
   }
 };
+
+const mapBackendMarket = (raw: any): Market => ({
+  id: idOf(raw),
+  name: String(raw?.name || 'Unnamed Market'),
+  slug: String(raw?.slug || idOf(raw)),
+  bannerImage: String(raw?.bannerImage || 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=800&auto=format&fit=crop&q=80'),
+  location: String(raw?.location || ''),
+  description: String(raw?.description || ''),
+  featuredCategories: Array.isArray(raw?.featuredCategories) ? raw.featuredCategories.map(String) : [],
+  bannerText: raw?.bannerText ? String(raw.bannerText) : undefined,
+  established: raw?.established ? String(raw.established) : undefined,
+});
 
 const mapBackendMessage = (raw: any, conversationId: string): ChatMessage => {
   const senderRole: 'buyer' | 'seller' = (raw?.senderId?.role === 'seller') ? 'seller' : 'buyer';
@@ -384,19 +398,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
   // Core marketplace data must be initialized before route synchronization.
   // The route effect depends on these collections.
-  const [markets] = useState<Market[]>(MOCK_MARKETS);
+  const [markets, setMarkets] = useState<Market[]>([]);
   const [categories] = useState<Category[]>(MOCK_CATEGORIES);
   const [shops, setShops] = useState<Shop[]>(() => {
     try {
-      const saved = localStorage.getItem('claymarket_shops');
+      const saved = localStorage.getItem('claymarket_shops_v2');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch {
-      // Fall back to demo shops.
+      // Fall back to an empty list; real shops load via the effect below.
     }
-    return MOCK_SHOPS;
+    return [];
   });
   const [products, setProducts] = useState<Product[]>(() => {
     try {
@@ -589,7 +603,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Save seller-created shops so shop management survives refresh.
   useEffect(() => {
     try {
-      localStorage.setItem('claymarket_shops', JSON.stringify(shops));
+      localStorage.setItem('claymarket_shops_v2', JSON.stringify(shops));
     } catch {
       // Ignore quota errors.
     }
@@ -624,8 +638,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // a buyer and seller on two different devices. Demo/mock content is shown
   // only while browsing as a guest; it is replaced by real synced data as
   // soon as someone is signed in.
-  const [conversations, setConversations] = useState<Conversation[]>(INITIAL_CONVERSATIONS);
-  const [activeConversationId, setActiveConversationId] = useState<string | null>('conv_aminul_rahul');
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [orders, setOrders] = useState<Order[]>(INITIAL_ORDERS);
 
   const fetchConversations = React.useCallback(async () => {
@@ -657,6 +671,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [currentUser.role, currentUser.id, shops, activeConversationId]);
 
+  const fetchMarkets = React.useCallback(async () => {
+    try {
+      const raw = await apiRequest<any[]>('/markets');
+      setMarkets(raw.map(mapBackendMarket));
+    } catch {
+      // Keep whatever was last successfully loaded on a transient failure.
+    }
+  }, []);
+
+  const addMarketAdmin = React.useCallback(async (input: { name: string; location: string; description: string; bannerImage?: string }) => {
+    const slug = input.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    const raw = await apiRequest<any>('/markets', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: input.name.trim(),
+        slug,
+        location: input.location.trim(),
+        description: input.description.trim(),
+        bannerImage: input.bannerImage?.trim() || undefined,
+        featuredCategories: [],
+      }),
+    });
+    setMarkets(prev => [...prev, mapBackendMarket(raw)]);
+  }, []);
+
+  const deleteMarketAdmin = React.useCallback(async (marketId: string) => {
+    await apiRequest<any>(`/markets/${marketId}`, { method: 'DELETE' });
+    setMarkets(prev => prev.filter(m => m.id !== marketId));
+  }, []);
+
   const fetchOrders = React.useCallback(async () => {
     if (currentUser.role === 'guest') return;
     try {
@@ -673,11 +717,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [currentUser.role, shops]);
 
+  // Markets are public data (no auth required), so load them once on mount
+  // regardless of sign-in state.
+  useEffect(() => {
+    void fetchMarkets();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Load real conversations/orders once signed in, and keep polling so a
   // message or status change made from another device shows up here too.
   useEffect(() => {
     if (currentUser.role === 'guest') {
-      setConversations(INITIAL_CONVERSATIONS);
+      setConversations([]);
       setOrders(INITIAL_ORDERS);
       return;
     }
@@ -2051,6 +2102,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         authModalTab,
         setAuthModalTab,
         markets,
+        addMarketAdmin,
+        deleteMarketAdmin,
         shops,
         products,
         categories,

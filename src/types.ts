@@ -1,4 +1,4 @@
-export type UserRole = 'guest' | 'buyer' | 'seller';
+export type UserRole = 'guest' | 'buyer' | 'seller' | 'admin';
 
 export interface Address {
   id: string;
@@ -215,6 +215,7 @@ export type AppView =
   | 'orders' 
   | 'profile' 
   | 'seller-dashboard' 
+  | 'admin-dashboard'
   | 'saved-addresses' 
   | 'notifications' 
   | 'settings' 

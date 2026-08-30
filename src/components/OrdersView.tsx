@@ -4,6 +4,7 @@ import {
   ChevronRight, MessageSquare, ShoppingBag 
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { EMPTY_SHOP_FALLBACK } from '../utils/fallbacks';
 
 export const OrdersView: React.FC = () => {
   const { orders, navigateTo, goBack, shops, startChatWithShop } = useApp();
@@ -79,7 +80,7 @@ export const OrdersView: React.FC = () => {
       {/* Orders List */}
       <div className="space-y-4">
         {orders.map((order) => {
-          const shop = shops.find(s => s.id === order.shopId) || shops[0];
+          const shop = shops.find(s => s.id === order.shopId) || shops[0] || EMPTY_SHOP_FALLBACK;
           return (
             <div
               key={order.id}

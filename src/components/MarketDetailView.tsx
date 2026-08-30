@@ -6,6 +6,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { CategoryClayIcon } from './ClayIllustrations';
 import { Market, Shop, Product, Category } from '../types';
+import { EMPTY_MARKET_FALLBACK } from '../utils/fallbacks';
 
 export const MarketDetailView: React.FC = () => {
   const { 
@@ -16,7 +17,7 @@ export const MarketDetailView: React.FC = () => {
 
   const [activeCategoryFilter, setActiveCategoryFilter] = useState<string>('all');
 
-  const market = selectedMarket || markets[0];
+  const market = selectedMarket || markets[0] || EMPTY_MARKET_FALLBACK;
 
   // Filter shops and products in this market
   const marketShops = shops.filter(s => s.marketId === market.id);

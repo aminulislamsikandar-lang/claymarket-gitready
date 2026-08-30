@@ -8,6 +8,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { Product } from '../types';
 import { AddEditProductModal } from './AddEditProductModal';
+import { EMPTY_SHOP_FALLBACK } from '../utils/fallbacks';
 
 export const SellerDashboardView: React.FC = () => {
   const { 
@@ -164,7 +165,7 @@ export const SellerDashboardView: React.FC = () => {
         <div className="flex items-center gap-3">
           <button
             onClick={() => {
-              const shop = shops.find(s => s.id === shopId) || shops[0];
+              const shop = shops.find(s => s.id === shopId) || shops[0] || EMPTY_SHOP_FALLBACK;
               navigateTo('shop-detail', { shop });
             }}
             className="px-4 py-2.5 rounded-full bg-[#FAF8FE] hover:bg-[#F1EDFD] text-[#8067E8] font-bold text-xs flex items-center gap-2 border border-[#DDD4FF] transition-colors cursor-pointer"

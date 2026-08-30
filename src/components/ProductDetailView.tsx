@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { shareOrCopy } from '../utils/share';
+import { EMPTY_SHOP_FALLBACK, EMPTY_MARKET_FALLBACK } from '../utils/fallbacks';
 
 export const ProductDetailView: React.FC = () => {
   const { 
@@ -15,8 +16,8 @@ export const ProductDetailView: React.FC = () => {
   } = useApp();
 
   const product = selectedProduct || products[0];
-  const shop = shops.find(s => s.id === product.shopId) || shops[0];
-  const market = markets.find(m => m.id === product.marketId || m.id === shop.marketId) || markets[0];
+  const shop = shops.find(s => s.id === product.shopId) || shops[0] || EMPTY_SHOP_FALLBACK;
+  const market = markets.find(m => m.id === product.marketId || m.id === shop.marketId) || markets[0] || EMPTY_MARKET_FALLBACK;
   const category = categories.find(c => c.id === product.categoryId || c.id === shop.categoryId) || categories[0];
 
   const defaultColorName = product.colors?.[0]?.name || 'Default';
