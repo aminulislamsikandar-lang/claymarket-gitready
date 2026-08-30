@@ -33,19 +33,23 @@ export const listConversations = async (req, res) => {
 
 export const createConversation = async (req, res) => {
   const { shopId, productId } = req.body || {};
-  const requestedSellerId = req.body?.sellerId;
+  const requestedSellerId = String(req.body?.sellerId || '').trim();
   const buyerId = authUserId(req);
 
   if (!buyerId) return fail(res, 'Authentication required.', 401);
   if (!shopId) return fail(res, 'shopId is required.');
 
   const shop = await Shop.findById(String(shopId));
-  if (!shop) return fail(res, 'Shop not found.', 404);
 
-  // The shop is the source of truth for its seller. This also handles older
-  // frontend data where ownerId/sellerId may be missing or stale.
-  const sellerId = valueId(shop.ownerId) || String(requestedSellerId || '').trim();
-  if (!sellerId) return fail(res, 'This shop does not have a seller assigned.');
+  // The frontend can already have a valid Firebase shop while the backend's
+  // shop collection is temporarily missing/stale. Messaging must not become
+  // unusable just because that reference record is unavailable. Prefer the
+  // shop owner when present, otherwise use the authenticated frontend-provided
+  // seller id and let conversation access control protect the thread.
+  const sellerId = valueId(shop?.ownerId) || requestedSellerId;
+  if (!sellerId) {
+    return fail(res, 'This shop does not have a seller assigned.');
+  }
   if (sellerId === buyerId) return fail(res, 'You cannot message yourself.');
 
   // Product attachment is optional for messaging. Some products exist only in
