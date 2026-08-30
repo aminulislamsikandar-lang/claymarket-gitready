@@ -4,7 +4,50 @@ import { useApp } from '../context/AppContext';
 import { Market } from '../types';
 
 export const MarketsGrid: React.FC = () => {
-  const { filteredMarkets, navigateTo } = useApp();
+  const { filteredMarkets, navigateTo, shops, searchQuery } = useApp();
+
+  // A seller can create a market manually when it does not exist in the
+  // backend market collection. Those shops are stored in Firestore, so expose
+  // their custom market as a normal Market card instead of hiding the shop's
+  // market from the public marketplace.
+  const customMarkets = React.useMemo<Market[]>(() => {
+    const byMarketId = new Map<string, Market>();
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+
+    shops.forEach((shop) => {
+      const marketId = String(shop.marketId || '');
+      const marketName = String(shop.marketName || '').trim();
+      if (!marketId.startsWith('custom_market_') || !marketName) return;
+
+      const location = [shop.district, shop.state].filter(Boolean).join(', ');
+      const description = location ? `Local market in ${location}.` : 'Local market created by a local seller.';
+      const matchesSearch = !normalizedQuery
+        || marketName.toLowerCase().includes(normalizedQuery)
+        || location.toLowerCase().includes(normalizedQuery)
+        || description.toLowerCase().includes(normalizedQuery);
+
+      if (!matchesSearch || byMarketId.has(marketId)) return;
+
+      byMarketId.set(marketId, {
+        id: marketId,
+        name: marketName,
+        slug: marketName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || marketId,
+        bannerImage: shop.banner || shop.avatar || 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=800&auto=format&fit=crop&q=80',
+        location,
+        description,
+        featuredCategories: shop.categoryId ? [shop.categoryId] : [],
+        bannerText: marketName.toUpperCase(),
+      });
+    });
+
+    return Array.from(byMarketId.values());
+  }, [shops, searchQuery]);
+
+  const displayMarkets = React.useMemo(() => {
+    const byId = new Map<string, Market>();
+    [...filteredMarkets, ...customMarkets].forEach((market) => byId.set(market.id, market));
+    return Array.from(byId.values());
+  }, [filteredMarkets, customMarkets]);
 
   return (
     <section className="py-4 sm:py-8">
@@ -24,14 +67,14 @@ export const MarketsGrid: React.FC = () => {
       </div>
 
       {/* Grid of Market Cards — tight 2-up grid on mobile (Amazon/Flipkart style), unchanged on desktop */}
-      {filteredMarkets.length === 0 ? (
+      {displayMarkets.length === 0 ? (
         <div className="py-10 text-center bg-white/60 rounded-2xl border border-dashed border-gray-200">
           <Store className="w-8 h-8 text-gray-300 mx-auto mb-2" />
           <p className="text-sm text-[#737B89] font-medium">No markets available yet. Please check back soon.</p>
         </div>
       ) : (
       <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-6">
-        {filteredMarkets.map((market: Market) => (
+        {displayMarkets.map((market: Market) => (
           <div
             key={market.id}
             id={`market-card-${market.id}`}
