@@ -1,0 +1,237 @@
+name: Apply market autocomplete fix
+
+on:
+  push:
+    branches:
+      - fix/market-autocomplete-seller
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/market-autocomplete-seller
+
+      - name: Patch market onboarding
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          auth = Path('src/components/AuthModal.tsx')
+          s = auth.read_text()
+          s = s.replace(
+              "import { AlertCircle, Eye, EyeOff, Loader2, Store, X } from 'lucide-react';\nimport { useApp } from '../context/AppContext';",
+              "import { AlertCircle, ChevronDown, Eye, EyeOff, Loader2, MapPin, Search, Store, X } from 'lucide-react';\nimport { useApp } from '../context/AppContext';\nimport { searchPlaces, type PlaceSuggestion } from '../utils/geocoding';"
+          )
+          s = s.replace(
+              "  const [selectedMarketId, setSelectedMarketId] = useState('mkt_kachumara');\n  const [selectedCategoryId, setSelectedCategoryId] = useState('cat_slippers');",
+              "  const [selectedMarketId, setSelectedMarketId] = useState('mkt_kachumara');\n  const [marketName, setMarketName] = useState('');\n  const [selectedMarketPlace, setSelectedMarketPlace] = useState<PlaceSuggestion | null>(null);\n  const [marketSuggestions, setMarketSuggestions] = useState<PlaceSuggestion[]>([]);\n  const [marketSuggestionsOpen, setMarketSuggestionsOpen] = useState(false);\n  const [marketLoading, setMarketLoading] = useState(false);\n  const [selectedCategoryId, setSelectedCategoryId] = useState('cat_slippers');"
+          )
+          s = s.replace(
+              "  const [passwordVisible, setPasswordVisible] = useState(false);",
+              "  const [passwordVisible, setPasswordVisible] = useState(false);\n  const marketRequestRef = React.useRef(0);"
+          )
+          s = s.replace(
+              "      setOwnerName(currentUser.name || '');\n      setEmail(currentUser.email || '');\n      setPhone(currentUser.phone || '');",
+              "      setOwnerName(currentUser.name || '');\n      setPhone(currentUser.phone || '');\n      setMarketName(currentUser.sellerLocation?.marketName || '');\n      setSelectedMarketId(currentUser.sellerLocation?.marketId || 'mkt_kachumara');"
+          )
+          marker = "\n  if (!isAuthModalOpen) return null;\n"
+          effect = r'''
+
+  useEffect(() => {
+    const query = marketName.trim();
+    if (query.length < 3) {
+      setMarketSuggestions([]);
+      setMarketLoading(false);
+      return;
+    }
+
+    const requestId = ++marketRequestRef.current;
+    setMarketLoading(true);
+    const timer = window.setTimeout(async () => {
+      try {
+        const results = await searchPlaces(query);
+        if (marketRequestRef.current === requestId) setMarketSuggestions(results);
+      } catch {
+        if (marketRequestRef.current === requestId) setMarketSuggestions([]);
+      } finally {
+        if (marketRequestRef.current === requestId) setMarketLoading(false);
+      }
+    }, 500);
+
+    return () => window.clearTimeout(timer);
+  }, [marketName]);
+'''
+          if marker in s and effect.strip() not in s:
+              s = s.replace(marker, effect + marker)
+          s = s.replace(
+              "          marketId: selectedMarketId,\n          categoryId: selectedCategoryId,",
+              "          marketId: selectedMarketId,\n          marketName: marketName.trim(),\n          categoryId: selectedCategoryId,"
+          )
+          old_block = '''              <div className="rounded-2xl bg-[#F7F5F3] border border-gray-200 px-4 py-3">
+                <p className="text-[11px] font-bold text-[#737B89] uppercase tracking-wide">Signed-in account</p>
+                {currentUser.role === 'guest' ? (
+                  <p className="text-sm font-semibold text-[#C24141] mt-1">
+                    Please sign in before opening a shop.
+                  </p>
+                ) : (
+                  <p className="text-sm font-semibold text-[#20243A] mt-1 truncate">
+                    {currentUser.email}
+                  </p>
+                )}
+              </div>
+
+'''
+          s = s.replace(old_block, '')
+          old_market = '''              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="market-location" className="text-xs font-bold text-[#20243A] block mb-1">Market</label>
+                  <select id="market-location" value={selectedMarketId} onChange={e => setSelectedMarketId(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl bg-[#F7F5F3] border border-gray-200 text-xs font-bold text-[#20243A] focus:outline-none focus:ring-2 focus:ring-[#8067E8]">
+                    {markets.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="seller-category" className="text-xs font-bold text-[#20243A] block mb-1">Category</label>
+                  <select id="seller-category" value={selectedCategoryId} onChange={e => setSelectedCategoryId(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl bg-[#F7F5F3] border border-gray-200 text-xs font-bold text-[#20243A] focus:outline-none focus:ring-2 focus:ring-[#8067E8]">
+                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+              </div>
+'''
+          new_market = '''              <div className="grid grid-cols-2 gap-3">
+                <div className="relative">
+                  <label htmlFor="market-location" className="text-xs font-bold text-[#20243A] block mb-1">Market</label>
+                  <div className="relative">
+                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                    <input
+                      id="market-location"
+                      type="text"
+                      required
+                      value={marketName}
+                      onChange={e => {
+                        setMarketName(e.target.value);
+                        setSelectedMarketId('');
+                        setSelectedMarketPlace(null);
+                        setMarketSuggestionsOpen(true);
+                        if (error) setError('');
+                      }}
+                      onFocus={() => setMarketSuggestionsOpen(true)}
+                      placeholder="Search or type market..."
+                      autoComplete="off"
+                      className="w-full pl-10 pr-8 py-2.5 rounded-xl bg-[#F7F5F3] border border-gray-200 text-xs font-bold text-[#20243A] focus:outline-none focus:ring-2 focus:ring-[#8067E8]"
+                    />
+                    <ChevronDown className={`absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none transition-transform ${marketSuggestionsOpen ? 'rotate-180' : ''}`} />
+                  </div>
+
+                  {marketSuggestionsOpen && (marketSuggestions.length > 0 || marketLoading || marketName.trim()) && (
+                    <div className="absolute left-0 right-0 top-full mt-2 bg-white rounded-2xl border border-gray-100 shadow-2xl z-[70] overflow-hidden max-h-72 overflow-y-auto">
+                      {marketLoading && marketSuggestions.length === 0 ? (
+                        <div className="flex items-center gap-2 px-3 py-3 text-xs text-gray-400">
+                          <Loader2 className="w-4 h-4 animate-spin" /> Searching places...
+                        </div>
+                      ) : marketSuggestions.length > 0 ? (
+                        <div className="p-2">
+                          {marketSuggestions.map(place => (
+                            <button
+                              key={place.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedMarketId('');
+                                setSelectedMarketPlace(place);
+                                setMarketName(place.label);
+                                setMarketSuggestionsOpen(false);
+                              }}
+                              className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-[#F7F5FE] text-left"
+                            >
+                              <div className="w-8 h-8 rounded-xl bg-[#CBE4FF] text-[#1B5899] flex items-center justify-center shrink-0"><MapPin className="w-4 h-4" /></div>
+                              <div className="min-w-0">
+                                <p className="text-sm font-bold text-[#20243A] truncate">{place.label}</p>
+                                {place.sublabel && <p className="text-[11px] text-[#737B89] truncate">{place.sublabel}</p>}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+
+                      {marketName.trim() && (
+                        <div className="border-t border-gray-100 p-2">
+                          <button
+                            type="button"
+                            onClick={() => { setSelectedMarketId(''); setSelectedMarketPlace(null); setMarketSuggestionsOpen(false); }}
+                            className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-[#F7F5FE] text-left"
+                          >
+                            <div className="w-8 h-8 rounded-xl bg-[#E9F7EC] text-[#176F43] flex items-center justify-center shrink-0"><Store className="w-4 h-4" /></div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-bold text-[#20243A]">Use "{marketName.trim()}"</p>
+                              <p className="text-[11px] text-[#737B89]">Save this market manually</p>
+                            </div>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {selectedMarketPlace && (
+                    <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-xl bg-[#EEF7FF] border border-[#CBE4FF]">
+                      <MapPin className="w-4 h-4 text-[#1B5899] shrink-0" />
+                      <p className="text-[11px] font-semibold text-[#1B5899] truncate">{selectedMarketPlace.label}</p>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label htmlFor="seller-category" className="text-xs font-bold text-[#20243A] block mb-1">Category</label>
+                  <select id="seller-category" value={selectedCategoryId} onChange={e => setSelectedCategoryId(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl bg-[#F7F5F3] border border-gray-200 text-xs font-bold text-[#20243A] focus:outline-none focus:ring-2 focus:ring-[#8067E8]">
+                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+              </div>
+'''
+          if old_market not in s:
+              raise SystemExit('Expected market block not found')
+          s = s.replace(old_market, new_market)
+          auth.write_text(s)
+
+          ctx = Path('src/context/AppContext.tsx')
+          s = ctx.read_text()
+          s = s.replace(
+              "registerSeller: (data: { name: string; phone?: string; shop: { name: string; marketId: string; categoryId: string; state: string; district: string; address?: string } }) => Promise<void>;",
+              "registerSeller: (data: { name: string; phone?: string; shop: { name: string; marketId: string; marketName?: string; categoryId: string; state: string; district: string; address?: string } }) => Promise<void>;"
+          )
+          s = s.replace(
+              "      marketId: string;\n      categoryId: string;",
+              "      marketId: string;\n      marketName?: string;\n      categoryId: string;",
+              1
+          )
+          old = """    const selectedMarket = markets.find(m => m.id === data.shop.marketId);\n    const selectedCategory = categories.find(c => c.id === data.shop.categoryId);\n    if (!selectedMarket) throw new Error('Please select a valid market.');\n    if (!selectedCategory) throw new Error('Please select a valid category.');\n\n    manualAuthInProgressRef.current = true;"""
+          new = """    const selectedMarket = markets.find(m => m.id === data.shop.marketId);\n    const manualMarketName = data.shop.marketName?.trim() || '';\n    const resolvedMarketName = selectedMarket?.name || manualMarketName;\n    const resolvedMarketId = selectedMarket?.id || (manualMarketName\n      ? `custom_market_${manualMarketName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'local'}`\n      : '');\n    const selectedCategory = categories.find(c => c.id === data.shop.categoryId);\n    if (!resolvedMarketName) throw new Error('Please enter or select a market.');\n    if (!selectedCategory) throw new Error('Please select a valid category.');\n\n    manualAuthInProgressRef.current = true;"""
+          if old not in s:
+              raise SystemExit('Expected registerSeller validation block not found')
+          s = s.replace(old, new)
+          s = s.replace("        marketId: selectedMarket.id,\n        marketName: selectedMarket.name,", "        marketId: resolvedMarketId,\n        marketName: resolvedMarketName,", 1)
+          s = s.replace("          marketId: selectedMarket.id,\n          marketName: selectedMarket.name,", "          marketId: resolvedMarketId,\n          marketName: resolvedMarketName,", 1)
+          s = s.replace("        marketId: selectedMarket.id,\n        marketName: selectedMarket.name,", "        marketId: resolvedMarketId,\n        marketName: resolvedMarketName,", 1)
+          ctx.write_text(s)
+          PY
+
+      - name: Commit patched source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/AuthModal.tsx src/context/AppContext.tsx
+          git commit -m "fix: add market autocomplete and manual market entry [skip ci]"
+          git push origin fix/market-autocomplete-seller
+
+      - name: Remove patch workflow
+        run: |
+          git rm .github/workflows/apply-market-fix.yml
+          git commit -m "chore: remove temporary patch workflow [skip ci]"
+          git push origin fix/market-autocomplete-seller
