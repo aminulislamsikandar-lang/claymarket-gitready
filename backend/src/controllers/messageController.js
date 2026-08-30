@@ -32,34 +32,48 @@ export const listConversations = async (req, res) => {
 };
 
 export const createConversation = async (req, res) => {
-  const { sellerId, shopId, productId } = req.body || {};
+  const { shopId, productId } = req.body || {};
+  const requestedSellerId = req.body?.sellerId;
   const buyerId = authUserId(req);
 
   if (!buyerId) return fail(res, 'Authentication required.', 401);
-  if (!sellerId || !shopId) return fail(res, 'sellerId and shopId are required.');
-  if (String(sellerId) === buyerId) return fail(res, 'You cannot message yourself.');
+  if (!shopId) return fail(res, 'shopId is required.');
 
   const shop = await Shop.findById(String(shopId));
   if (!shop) return fail(res, 'Shop not found.', 404);
 
-  if (valueId(shop.ownerId) !== String(sellerId)) {
-    return fail(res, 'Seller does not own this shop.');
+  // The shop is the source of truth for its seller. This also handles older
+  // frontend data where ownerId/sellerId may be missing or stale.
+  const sellerId = valueId(shop.ownerId) || String(requestedSellerId || '').trim();
+  if (!sellerId) return fail(res, 'This shop does not have a seller assigned.');
+  if (sellerId === buyerId) return fail(res, 'You cannot message yourself.');
+
+  // Product attachment is optional for messaging. Some products exist only in
+  // the browser-side Firestore data, so an unknown product must not prevent a
+  // buyer from starting a normal seller conversation.
+  let validProductId = '';
+  if (productId) {
+    const exists = await Product.exists({ _id: String(productId), shopId: String(shopId) });
+    if (exists) validProductId = String(productId);
   }
 
-  if (productId && !(await Product.exists({ _id: String(productId), shopId: String(shopId) }))) {
-    return fail(res, 'Product does not belong to this shop.');
-  }
-
-  const conversationFilter = {
+  // Reuse the shop conversation even when a product attachment is unavailable.
+  // This keeps the direct-seller chat stable across product/detail entry points.
+  const baseFilter = {
     buyerId,
-    sellerId: String(sellerId),
+    sellerId,
     shopId: String(shopId),
-    ...(productId ? { productId: String(productId) } : {}),
   };
 
-  let conversation = await Conversation.findOne(conversationFilter);
+  let conversation = validProductId
+    ? await Conversation.findOne({ ...baseFilter, productId: validProductId })
+    : await Conversation.findOne(baseFilter);
+
   if (!conversation) {
-    conversation = await Conversation.create(conversationFilter);
+    conversation = await Conversation.create({
+      ...baseFilter,
+      ...(validProductId ? { productId: validProductId } : {}),
+    });
   }
 
   return ok(res, conversation, 201);
