@@ -4,6 +4,27 @@ import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
+// Firebase/Firestore is the source of truth for marketplace data. Old
+// browser-local demo/cache data must never be allowed to repopulate shops or
+// products after those records have been deleted from Firebase. Clear the
+// legacy cache before AppProvider initializes its state.
+const MARKETPLACE_CACHE_KEYS = [
+  'claymarket_shops_v2',
+  'claymarket_products',
+  'claymarket_cart',
+  'claymarket_wishlist',
+  'claymarket_followed_shops',
+  'claymarket_conversation_reads',
+] as const;
+
+for (const key of MARKETPLACE_CACHE_KEYS) {
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // localStorage may be unavailable/restricted; Firebase remains the source of truth.
+  }
+}
+
 // Global broken-image fallback. Product/shop photos can come from many
 // external hosts (Firebase Storage, Unsplash demo content, Google account
 // avatars) and any one of those URLs can 404 or time out in production. The
