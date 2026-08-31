@@ -2,6 +2,20 @@ import { firebaseAuthClient } from '../firebase';
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
 
+export class ApiRequestError extends Error {
+  status?: number;
+  requestId?: string;
+  details?: unknown;
+
+  constructor(message: string, options: { status?: number; requestId?: string; details?: unknown } = {}) {
+    super(message);
+    this.name = 'ApiRequestError';
+    this.status = options.status;
+    this.requestId = options.requestId;
+    this.details = options.details;
+  }
+}
+
 export async function apiRequest<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
   let token = localStorage.getItem('claymarket_auth_token');
   if (firebaseAuthClient?.currentUser) {
@@ -18,7 +32,16 @@ export async function apiRequest<T = unknown>(path: string, options: RequestInit
 
   const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok || payload?.success === false) throw new Error(payload?.message || `Request failed (${response.status})`);
+  if (!response.ok || payload?.success === false) {
+    throw new ApiRequestError(
+      payload?.message || `Request failed (${response.status})`,
+      {
+        status: response.status,
+        requestId: payload?.requestId || response.headers.get('X-Request-Id') || undefined,
+        details: payload?.details,
+      },
+    );
+  }
   return (payload?.data ?? payload) as T;
 }
 
