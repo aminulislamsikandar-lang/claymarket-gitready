@@ -62,6 +62,7 @@ export interface Shop {
   ownerName: string;
   isFollowing?: boolean;
   openingHours?: string;
+  onlineOrdering?: boolean;
   iconBg?: string;
   iconType?: string;
   productCategories?: ShopProductCategory[];
@@ -128,7 +129,7 @@ export interface ChatMessage {
   conversationId?: string;
   senderId?: string;
   senderRole?: 'buyer' | 'seller' | 'guest';
-  sender: 'buyer' | 'seller'; // Keep for backwards compatibility
+  sender: 'buyer' | 'seller';
   text: string;
   timestamp: string;
   productAttachment?: {
@@ -187,40 +188,3 @@ export interface Order {
   deliveryType: 'pickup' | 'delivery';
   address?: string;
 }
-
-export interface Review {
-  id: string;
-  authorName: string;
-  authorAvatar: string;
-  rating: number;
-  date: string;
-  comment: string;
-  verifiedPurchase: boolean;
-}
-
-export type NavigationTab = 'markets' | 'shops' | 'categories' | 'about';
-
-export type AppView = 
-  | 'markets' 
-  | 'market-detail' 
-  | 'shops' 
-  | 'shop-detail' 
-  | 'categories' 
-  | 'category-detail' 
-  | 'product-detail' 
-  | 'about' 
-  | 'messages' 
-  | 'wishlist' 
-  | 'cart' 
-  | 'orders' 
-  | 'profile' 
-  | 'seller-dashboard' 
-  | 'admin-dashboard'
-  | 'saved-addresses' 
-  | 'notifications' 
-  | 'settings' 
-  | 'help'
-  | 'privacy'
-  | 'terms'
-  | 'faq'
-  | 'not-found';
