@@ -20,7 +20,9 @@ export const listShops = async (req, res) => {
   const limit = parseLimit(req.query.limit);
   const shops = await Shop.find(filter).populate('marketId', 'name slug').populate('categoryIds', 'name slug').sort({ name: 1 }).skip((page - 1) * limit).limit(limit);
   const total = await Shop.countDocuments(filter);
-  return ok(res, { shops, pagination: { page, limit, total, totalPages: Math.ceil(total / limit), hasNextPage: page * limit < total, hasPreviousPage: page > 1 } });
+  const pagination = { page, limit, total, totalPages: Math.ceil(total / limit), hasNextPage: page * limit < total, hasPreviousPage: page > 1 };
+  res.set('X-Pagination', JSON.stringify(pagination));
+  return ok(res, shops);
 };
 
 export const getShop = async (req, res) => {
