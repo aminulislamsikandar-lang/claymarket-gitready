@@ -6,11 +6,11 @@ import { Category } from '../models/Category.js';
 import { Shop } from '../models/Shop.js';
 import { Product } from '../models/Product.js';
 
+// Seed only the market that has the seeded real seller/shop below.
+// Other markets should be created through the admin flow and become publicly
+// visible only after a real seller has a shop there.
 const markets = [
-  ['mkt_kachumara','Kachumara Market','kachumara-market','Kachumara, Barpeta District, Assam','https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=800','A bustling local commercial hub for footwear, textiles, groceries and crafts.'],
-  ['mkt_nagarbera','Nagarbera Market','nagarbera-market','Nagarbera, Kamrup District, Assam','https://images.unsplash.com/photo-1533900298318-6b8da08a523e?w=800','A busy weekly and daily market with footwear, household goods and farm produce.'],
-  ['mkt_rangapara','Rangapara Market','rangapara-market','Rangapara, Sonitpur District, Assam','https://images.unsplash.com/photo-1578916171728-46686eac8d58?w=800','A vibrant market for electronics, fabrics, groceries and footwear.'],
-  ['mkt_barpeta','Barpeta Market','barpeta-market','Barpeta Town, Assam','https://images.unsplash.com/photo-1542838132-92c53300491e?w=800','A historic marketplace for traditional products, clothing, groceries and crafts.'],
+  ['mkt_kachumara','Kachumara Market','kachumara-market','Kachumara, Barpeta District, Assam','https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=800','A local marketplace for footwear and everyday goods.'],
 ];
 const categories = [
   ['cat_slippers','Slippers','slippers','Comfortable daily footwear and sandals.'],
