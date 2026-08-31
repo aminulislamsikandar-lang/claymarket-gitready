@@ -7,9 +7,17 @@ import { ok } from '../utils/apiResponse.js';
 // owned by a real seller account. This keeps seeded/demo-only markets out
 // of the marketplace without deleting legitimate market documents.
 const getActiveMarketIds = async () => {
-  const sellerIds = await User.distinct('_id', { role: 'seller' });
-  if (!sellerIds.length) return [];
-  return Shop.distinct('marketId', { ownerId: { $in: sellerIds } });
+  const sellerUsers = await User.find({ role: 'seller' });
+  if (!sellerUsers.length) return [];
+
+  const sellerIds = new Set(sellerUsers.map(user => String(user._id)));
+  const shops = await Shop.find({});
+  return [...new Set(
+    shops
+      .filter(shop => sellerIds.has(String(shop.ownerId)))
+      .map(shop => String(shop.marketId))
+      .filter(Boolean),
+  )];
 };
 
 export const listMarkets = async (req, res) => {
