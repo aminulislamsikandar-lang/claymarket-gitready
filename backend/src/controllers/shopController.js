@@ -3,13 +3,16 @@ import { Category } from '../models/Category.js';
 import { Shop } from '../models/Shop.js';
 import { ok, fail } from '../utils/apiResponse.js';
 
+const MAX_SEARCH_LENGTH = 80;
+const escapeRegex = (value) => String(value).slice(0, MAX_SEARCH_LENGTH).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 export const listShops = async (req, res) => {
   const filter = {};
   if (req.query.marketId) filter.marketId = req.query.marketId;
   if (req.query.categoryId) filter.categoryIds = req.query.categoryId;
-  if (req.query.state) filter.state = new RegExp(String(req.query.state).trim(), 'i');
-  if (req.query.district) filter.district = new RegExp(String(req.query.district).trim(), 'i');
-  if (req.query.marketName) filter.marketName = new RegExp(String(req.query.marketName).trim(), 'i');
+  if (req.query.state) filter.state = new RegExp(escapeRegex(req.query.state), 'i');
+  if (req.query.district) filter.district = new RegExp(escapeRegex(req.query.district), 'i');
+  if (req.query.marketName) filter.marketName = new RegExp(escapeRegex(req.query.marketName), 'i');
   const shops = await Shop.find(filter).populate('marketId', 'name slug').populate('categoryIds', 'name slug').sort({ name: 1 });
   return ok(res, shops);
 };
