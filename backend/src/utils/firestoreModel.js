@@ -270,6 +270,13 @@ export function createModel(name, collection = COLLECTIONS[name]) {
       await firestore().collection(collection).doc(doc._id).set(stripFirestoreValues(doc));
       return doc;
     },
+    async createIfAbsent(input) {
+      if (Array.isArray(input)) return Promise.all(input.map(v => Model.createIfAbsent(v)));
+      const now = new Date();
+      const doc = attachMethods({ ...structuredClone(input), _id: idFor(collection, input?._id), createdAt: input?.createdAt || now, updatedAt: input?.updatedAt || now }, collection);
+      await firestore().collection(collection).doc(doc._id).create(stripFirestoreValues(doc));
+      return doc;
+    },
     async exists(filter = {}) { return Boolean(await new Query(collection, filter, true).exec()); },
     async countDocuments(filter = {}) {
       const idCondition = filter && filter._id;
