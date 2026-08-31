@@ -39,48 +39,47 @@ export const createConversation = async (req, res) => {
   if (!buyerId) return fail(res, 'Authentication required.', 401);
   if (!shopId) return fail(res, 'shopId is required.');
 
-  const shop = await Shop.findById(String(shopId));
+  try {
+    const shop = await Shop.findById(String(shopId));
+    const sellerId = valueId(shop?.ownerId) || requestedSellerId;
+    if (!sellerId) return fail(res, 'This shop does not have a seller assigned.');
+    if (sellerId === buyerId) return fail(res, 'You cannot message yourself.');
 
-  // The frontend can already have a valid Firebase shop while the backend's
-  // shop collection is temporarily missing/stale. Messaging must not become
-  // unusable just because that reference record is unavailable. Prefer the
-  // shop owner when present, otherwise use the authenticated frontend-provided
-  // seller id and let conversation access control protect the thread.
-  const sellerId = valueId(shop?.ownerId) || requestedSellerId;
-  if (!sellerId) {
-    return fail(res, 'This shop does not have a seller assigned.');
-  }
-  if (sellerId === buyerId) return fail(res, 'You cannot message yourself.');
+    let validProductId = '';
+    if (productId) {
+      const exists = await Product.exists({ _id: String(productId), shopId: String(shopId) });
+      if (exists) validProductId = String(productId);
+    }
 
-  // Product attachment is optional for messaging. Some products exist only in
-  // the browser-side Firestore data, so an unknown product must not prevent a
-  // buyer from starting a normal seller conversation.
-  let validProductId = '';
-  if (productId) {
-    const exists = await Product.exists({ _id: String(productId), shopId: String(shopId) });
-    if (exists) validProductId = String(productId);
-  }
+    // Direct seller chat is one thread per buyer/shop. A product is optional
+    // context for that thread, not a separate conversation identity. This also
+    // prevents a race with an early message sent against a temporary id from
+    // creating a second thread when the normal POST /conversations arrives.
+    const baseFilter = { buyerId, sellerId, shopId: String(shopId) };
+    let conversation = await Conversation.findOne(baseFilter);
 
-  // Reuse the shop conversation even when a product attachment is unavailable.
-  // This keeps the direct-seller chat stable across product/detail entry points.
-  const baseFilter = {
-    buyerId,
-    sellerId,
-    shopId: String(shopId),
-  };
+    if (!conversation) {
+      conversation = await Conversation.create({
+        ...baseFilter,
+        ...(validProductId ? { productId: validProductId } : {}),
+      });
+    } else if (validProductId && !valueId(conversation.productId)) {
+      conversation.productId = validProductId;
+      await conversation.save();
+    }
 
-  let conversation = validProductId
-    ? await Conversation.findOne({ ...baseFilter, productId: validProductId })
-    : await Conversation.findOne(baseFilter);
-
-  if (!conversation) {
-    conversation = await Conversation.create({
-      ...baseFilter,
-      ...(validProductId ? { productId: validProductId } : {}),
+    return ok(res, conversation, 201);
+  } catch (error) {
+    console.error(`[${req.id || 'no-request-id'}] createConversation failed:`, {
+      code: error?.code,
+      message: error?.message,
+      name: error?.name,
+      shopId: String(shopId),
+      productId: productId ? String(productId) : undefined,
+      buyerId,
     });
+    throw error;
   }
-
-  return ok(res, conversation, 201);
 };
 
 export const listMessages = async (req, res) => {
@@ -105,10 +104,26 @@ export const sendMessage = async (req, res) => {
   const userId = authUserId(req);
   if (!userId) return fail(res, 'Authentication required.', 401);
 
-  const conversationId = String(req.params.id || '').trim();
+  let conversationId = String(req.params.id || '').trim();
   const text = String(req.body?.text || '').trim();
   if (!conversationId) return fail(res, 'Conversation ID is required.');
   if (!text) return fail(res, 'Message text is required.');
+
+  // The UI may optimistically open a new thread with conv_pending_<shopId>_<timestamp>.
+  // Resolve that temporary id on the server too, so an early Quick Inquiry/send
+  // cannot be lost even if it races the POST /conversations request.
+  if (conversationId.startsWith('conv_pending_')) {
+    const parts = conversationId.split('_');
+    const shopId = parts.slice(2, -1).join('_');
+    if (shopId) {
+      const shop = await Shop.findById(shopId);
+      const sellerId = valueId(shop?.ownerId);
+      if (!sellerId || sellerId === userId) return fail(res, 'This shop does not have a seller assigned.');
+      let conversation = await Conversation.findOne({ buyerId: userId, sellerId, shopId });
+      if (!conversation) conversation = await Conversation.create({ buyerId: userId, sellerId, shopId });
+      conversationId = String(conversation._id);
+    }
+  }
 
   const conversation = await Conversation.findById(conversationId);
   if (!conversation) return fail(res, 'Conversation not found.', 404);
@@ -117,12 +132,7 @@ export const sendMessage = async (req, res) => {
     return fail(res, 'You do not have access to this conversation.', 403);
   }
 
-  const message = await Message.create({
-    conversationId,
-    senderId: userId,
-    text,
-  });
-
+  const message = await Message.create({ conversationId, senderId: userId, text });
   conversation.updatedAt = new Date();
   await conversation.save();
 

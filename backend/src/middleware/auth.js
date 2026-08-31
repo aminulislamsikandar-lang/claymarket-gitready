@@ -4,17 +4,22 @@ import { User } from '../models/User.js';
 export async function authenticateUser(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
-  if (!token) return res.status(401).json({ success: false, message: 'Authentication required.' });
+  if (!token) return res.status(401).json({ success: false, message: 'Authentication required.', requestId: req.id });
 
   try {
     const decoded = await firebaseAuth().verifyIdToken(token);
     const user = await User.findById(decoded.uid);
-    if (!user) return res.status(401).json({ success: false, message: 'User profile not found.' });
+    if (!user) return res.status(401).json({ success: false, message: 'User profile not found.', requestId: req.id });
     req.user = user;
     req.firebaseUser = decoded;
     next();
-  } catch {
-    return res.status(401).json({ success: false, message: 'Invalid or expired Firebase session.' });
+  } catch (error) {
+    console.error(`[${req.id || 'no-request-id'}] Firebase authentication failed:`, {
+      code: error?.code,
+      message: error?.message,
+      name: error?.name,
+    });
+    return res.status(401).json({ success: false, message: 'Invalid or expired Firebase session.', requestId: req.id });
   }
 }
 
