@@ -3,26 +3,12 @@ import { X, Send, CheckCheck, MessageSquare, Sparkles, ExternalLink, Plus, Store
 import { useApp } from '../context/AppContext';
 
 export const MessagingDrawer: React.FC = () => {
-  const {
-    isMessagesOpen,
-    setIsMessagesOpen,
-    conversations,
-    activeConversationId,
-    setActiveConversationId,
-    sendMessage,
-    startChatWithShop,
-    navigateTo,
-    currentUser,
-    products,
-    shops,
-  } = useApp();
-
+  const { isMessagesOpen, setIsMessagesOpen, conversations, activeConversationId, setActiveConversationId, sendMessage, startChatWithShop, navigateTo, currentUser, products, shops } = useApp();
   const [inputMessage, setInputMessage] = useState('');
   const [showNewSellerChat, setShowNewSellerChat] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
   const activeConv = conversations.find(c => c.id === activeConversationId) || conversations[0];
-
   const getCounterpart = (conversation: typeof activeConv) => {
     if (!conversation) return { name: '', role: '', context: '', avatar: '' };
     const currentIsBuyer = String(conversation.buyerId) === String(currentUser.id);
@@ -31,68 +17,27 @@ export const MessagingDrawer: React.FC = () => {
     if (currentIsSeller) return { name: conversation.buyerName || 'Buyer', role: 'Buyer', context: conversation.shopName || '', avatar: conversation.buyerAvatar || '' };
     return { name: conversation.sellerName || conversation.buyerName || conversation.shopName || 'User', role: 'User', context: conversation.shopName || '', avatar: conversation.shopAvatar || conversation.buyerAvatar || '' };
   };
-
-  const getConversationLabel = (conversation: typeof activeConv) => {
-    const counterpart = getCounterpart(conversation);
-    const primary = counterpart.role === 'Seller' ? (conversation?.shopName || counterpart.name) : counterpart.name;
-    return { primary: primary || 'Conversation', secondary: counterpart.role, title: [counterpart.name, counterpart.role, counterpart.context].filter(Boolean).join(' · ') };
-  };
-
+  const getConversationLabel = (conversation: typeof activeConv) => { const counterpart = getCounterpart(conversation); return { primary: counterpart.role === 'Seller' ? (conversation?.shopName || counterpart.name) : counterpart.name, secondary: counterpart.role, title: [counterpart.name, counterpart.role, counterpart.context].filter(Boolean).join(' · ') }; };
   const counterpart = getCounterpart(activeConv);
   const otherSellerShops = useMemo(() => shops.filter(shop => shop.ownerId && shop.ownerId !== currentUser.id), [shops, currentUser.id]);
-
-  useEffect(() => {
-    if (isMessagesOpen) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [isMessagesOpen, activeConv?.messages.length, activeConversationId]);
-
-  useEffect(() => {
-    if (!isMessagesOpen) return;
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') setIsMessagesOpen(false); };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [isMessagesOpen, setIsMessagesOpen]);
-
+  useEffect(() => { if (isMessagesOpen) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [isMessagesOpen, activeConv?.messages.length, activeConversationId]);
+  useEffect(() => { if (!isMessagesOpen) return; const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') setIsMessagesOpen(false); }; document.addEventListener('keydown', onKeyDown); return () => document.removeEventListener('keydown', onKeyDown); }, [isMessagesOpen, setIsMessagesOpen]);
   if (!isMessagesOpen) return null;
-
-  const handleSend = (textToSend?: string) => {
-    const text = (textToSend ?? inputMessage).trim();
-    if (!text || !activeConv) return;
-    sendMessage(activeConv.id, text);
-    setInputMessage('');
-  };
-
+  const handleSend = async (textToSend?: string) => { const text = (textToSend ?? inputMessage).trim(); if (!text || !activeConv || isSending) return; setIsSending(true); try { await Promise.resolve(sendMessage(activeConv.id, text)); setInputMessage(''); } finally { setIsSending(false); } };
   const quickInquiries = ['Is this item in stock today?', 'Can I pick up at the stall directly?', 'What sizes do you have available?', 'What is your stall location in the market?'];
   const attachedProduct = activeConv?.productAttachment || activeConv?.messages.find(m => m.productAttachment)?.productAttachment;
-
-  const handleViewProduct = () => {
-    if (!attachedProduct || !activeConv) return;
-    setIsMessagesOpen(false);
-    const realProduct = products.find(p => p.id === attachedProduct.id);
-    const shop = shops.find(s => s.id === activeConv.shopId);
-    if (realProduct) navigateTo('product-detail', { product: realProduct, shop: shop || undefined });
-  };
-
+  const handleViewProduct = () => { if (!attachedProduct || !activeConv) return; setIsMessagesOpen(false); const realProduct = products.find(p => p.id === attachedProduct.id); const shop = shops.find(s => s.id === activeConv.shopId); if (realProduct) navigateTo('product-detail', { product: realProduct, shop: shop || undefined }); };
   return (
     <div className="fixed inset-0 z-50 overflow-hidden bg-black/40 backdrop-blur-xs flex justify-end animate-in fade-in duration-200" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setIsMessagesOpen(false); }}>
       <div className="w-full max-w-lg bg-white h-full shadow-2xl flex flex-col border-l border-gray-100 animate-in slide-in-from-right duration-300" role="dialog" aria-modal="true" aria-labelledby="messages-drawer-title">
-        <div className="px-4 py-4 sm:px-5 border-b border-gray-100 bg-white">
-          <div className="flex items-center justify-between gap-3">
-            {activeConv ? <div className="flex items-center gap-3 min-w-0"><img loading="lazy" decoding="async" src={counterpart.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80'} alt={counterpart.name} className="w-10 h-10 rounded-xl object-cover ring-1 ring-gray-200 shrink-0" /><div className="min-w-0"><h3 id="messages-drawer-title" className="font-bold text-sm sm:text-base text-[#20243A] truncate">{getConversationLabel(activeConv).primary}</h3><p className="text-xs text-gray-500 truncate">{counterpart.role}{counterpart.context && ` · ${counterpart.context}`}</p></div></div> : <div className="min-w-0"><h3 id="messages-drawer-title" className="font-bold text-base text-[#20243A]">Messages</h3><p className="text-xs text-gray-500">Private conversations</p></div>}
-            <div className="flex items-center gap-1 shrink-0">
-              {currentUser.role === 'seller' && <button type="button" onClick={() => setShowNewSellerChat(v => !v)} className="p-2 rounded-full hover:bg-gray-100 text-[#8067E8] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8067E8]" title="New seller conversation" aria-label="New seller conversation"><Plus className="w-5 h-5" /></button>}
-              <button type="button" onClick={() => setIsMessagesOpen(false)} className="p-2 rounded-full hover:bg-gray-100 text-gray-500 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8067E8]" aria-label="Close messages"><X className="w-5 h-5" /></button>
-            </div>
-          </div>
+        <div className="px-4 py-4 sm:px-5 border-b border-gray-100 bg-white"><div className="flex items-center justify-between gap-3">{activeConv ? <div className="flex items-center gap-3 min-w-0"><img loading="lazy" decoding="async" src={counterpart.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80'} alt={counterpart.name} className="w-10 h-10 rounded-xl object-cover ring-1 ring-gray-200 shrink-0" /><div className="min-w-0"><h3 id="messages-drawer-title" className="font-bold text-sm sm:text-base text-[#20243A] truncate">{getConversationLabel(activeConv).primary}</h3><p className="text-xs text-gray-500 truncate">{counterpart.role}{counterpart.context && ` · ${counterpart.context}`}</p></div></div> : <div className="min-w-0"><h3 id="messages-drawer-title" className="font-bold text-base text-[#20243A]">Messages</h3><p className="text-xs text-gray-500">Private conversations</p></div>}<div className="flex items-center gap-1 shrink-0">{currentUser.role === 'seller' && <button type="button" onClick={() => setShowNewSellerChat(v => !v)} className="p-2 rounded-full hover:bg-gray-100 text-[#8067E8] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8067E8]" title="New seller conversation" aria-label="New seller conversation"><Plus className="w-5 h-5" /></button>}<button type="button" onClick={() => setIsMessagesOpen(false)} className="p-2 rounded-full hover:bg-gray-100 text-gray-500 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8067E8]" aria-label="Close messages"><X className="w-5 h-5" /></button></div></div>
           {currentUser.role === 'seller' && showNewSellerChat && <div className="mt-3 p-3 bg-[#FAF8FE] border border-[#DDD4FF] rounded-2xl"><div className="flex items-center gap-2 mb-2"><Store className="w-4 h-4 text-[#8067E8]" /><p className="text-xs font-extrabold text-[#20243A]">New seller conversation</p></div><div className="max-h-44 overflow-y-auto space-y-1.5">{otherSellerShops.length === 0 ? <p className="text-xs text-gray-500 py-2">No other sellers are available yet.</p> : otherSellerShops.map(shop => <button type="button" key={shop.id} onClick={() => { setShowNewSellerChat(false); startChatWithShop(shop); }} className="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-white text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8067E8]"><img loading="lazy" decoding="async" src={shop.avatar} alt={shop.name} className="w-9 h-9 rounded-xl object-cover" /><span className="min-w-0 flex-1"><span className="block text-xs font-bold text-[#20243A] truncate">{shop.name}</span><span className="block text-[10px] text-gray-500 truncate">Seller: {shop.ownerName || 'Seller'}</span></span></button>)}</div></div>}
         </div>
         {conversations.length > 1 && <div className="px-4 py-2.5 bg-[#F7F5F3] border-b border-gray-200/70 flex items-center gap-2 overflow-x-auto">{conversations.map(c => { const label = getConversationLabel(c); return <button type="button" key={c.id} onClick={() => setActiveConversationId(c.id)} title={label.title} className={`px-3 py-2 rounded-xl text-left whitespace-nowrap transition-all border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8067E8] ${c.id === activeConv?.id ? 'bg-[#8067E8] text-white border-[#8067E8]' : 'bg-white text-[#20243A] border-gray-200 hover:border-[#C9BEF7]'}`}><span className="block text-xs font-bold">{label.primary}</span><span className={`block text-[10px] ${c.id === activeConv?.id ? 'text-white/80' : 'text-gray-500'}`}>{label.secondary}{c.unreadCount > 0 && c.id !== activeConv?.id ? ` · ${c.unreadCount} new` : ''}</span></button>; })}</div>}
         {attachedProduct && <div className="mx-4 mt-3 p-3 bg-[#FAF8FE] border border-[#DDD4FF] rounded-2xl flex items-center justify-between gap-3"><div className="flex items-center gap-3 min-w-0"><img loading="lazy" decoding="async" src={attachedProduct.image} alt={attachedProduct.name} className="w-12 h-12 rounded-xl object-cover shrink-0" /><div className="min-w-0"><span className="text-[10px] uppercase font-bold text-[#8067E8]">Product</span><p className="text-xs font-bold text-[#20243A] truncate">{attachedProduct.name}</p>{attachedProduct.price !== undefined && <p className="text-xs font-extrabold text-[#8067E8]">₹{attachedProduct.price}</p>}</div></div><button type="button" onClick={handleViewProduct} className="text-xs font-bold text-[#8067E8] bg-[#DDD4FF]/50 px-3 py-1.5 rounded-full flex items-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8067E8]">View <ExternalLink className="w-3 h-3" /></button></div>}
-        <div className="flex-1 p-4 sm:p-5 overflow-y-auto space-y-3.5 bg-[#FDFCFB]">
-          {activeConv?.messages.length ? activeConv.messages.map(msg => { const isMe = String(msg.senderId || '') === String(currentUser.id); return <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>{msg.productAttachment && <div className="mb-1 p-2 rounded-xl flex items-center gap-2 bg-white border border-gray-200 max-w-[82%]"><img loading="lazy" decoding="async" src={msg.productAttachment.image} alt={msg.productAttachment.name} className="w-8 h-8 rounded-lg object-cover" /><div className="text-[11px] truncate"><p className="font-bold truncate">{msg.productAttachment.name}</p><p className="font-extrabold text-[#8067E8]">₹{msg.productAttachment.price}</p></div></div>}<div className={`max-w-[82%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${isMe ? 'bg-[#8067E8] text-white rounded-br-xs' : 'bg-white text-[#20243A] border border-gray-100 rounded-bl-xs'}`}><p className="whitespace-pre-wrap">{msg.text}</p></div><div className="flex items-center gap-1 mt-1 text-[10px] text-gray-400 px-1"><span>{msg.timestamp}</span>{isMe && <CheckCheck className="w-3.5 h-3.5 text-[#8067E8]" />}</div></div>; }) : <div className="text-center py-16 text-gray-400"><div className="w-14 h-14 rounded-full bg-[#FAF8FE] text-[#8067E8] flex items-center justify-center mx-auto mb-3"><MessageSquare className="w-7 h-7" /></div><h4 className="font-bold text-sm text-[#20243A]">No messages yet</h4><p className="text-xs text-gray-500 mt-1">Start the conversation below.</p></div>}
-          <div ref={messagesEndRef} />
-        </div>
-        {currentUser.role === 'buyer' && activeConv && <div className="px-4 py-2.5 bg-white border-t border-gray-100"><p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1.5 flex items-center gap-1"><Sparkles className="w-3 h-3 text-[#8067E8]" /> Quick Inquiries</p><div className="flex items-center gap-1.5 overflow-x-auto pb-1">{quickInquiries.map(q => <button type="button" key={q} onClick={() => handleSend(q)} className="px-2.5 py-1 bg-[#FAF8FE] text-[#6C4DE6] text-xs font-semibold rounded-full border border-[#DDD4FF] whitespace-nowrap">{q}</button>)}</div></div>}
-        <div className="p-4 bg-white border-t border-gray-100"><form onSubmit={e => { e.preventDefault(); handleSend(); }} className="flex items-center gap-2"><input value={inputMessage} onChange={e => setInputMessage(e.target.value)} placeholder={activeConv ? `Message ${counterpart.name || 'user'}...` : 'Select a conversation...'} disabled={!activeConv} className="flex-1 px-4 py-3 bg-[#F7F5F3] rounded-full text-sm font-medium text-[#20243A] placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#8067E8]/40 border border-gray-200/80 disabled:opacity-60" /><button type="submit" disabled={!activeConv || !inputMessage.trim()} className="p-3 bg-[#8067E8] hover:bg-[#6E52E2] disabled:opacity-50 text-white rounded-full shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#8067E8]" aria-label="Send message"><Send className="w-4 h-4" /></button></form></div>
+        <div className="flex-1 p-4 sm:p-5 overflow-y-auto space-y-3.5 bg-[#FDFCFB]">{activeConv?.messages.length ? activeConv.messages.map(msg => { const isMe = String(msg.senderId || '') === String(currentUser.id); return <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>{msg.productAttachment && <div className="mb-1 p-2 rounded-xl flex items-center gap-2 bg-white border border-gray-200 max-w-[82%]"><img loading="lazy" decoding="async" src={msg.productAttachment.image} alt={msg.productAttachment.name} className="w-8 h-8 rounded-lg object-cover" /><div className="text-[11px] truncate"><p className="font-bold truncate">{msg.productAttachment.name}</p><p className="font-extrabold text-[#8067E8]">₹{msg.productAttachment.price}</p></div></div>}<div className={`max-w-[82%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${isMe ? 'bg-[#8067E8] text-white rounded-br-xs' : 'bg-white text-[#20243A] border border-gray-100 rounded-bl-xs'}`}><p className="whitespace-pre-wrap">{msg.text}</p></div><div className="flex items-center gap-1 mt-1 text-[10px] text-gray-400 px-1"><span>{msg.timestamp}</span>{isMe && <CheckCheck className="w-3.5 h-3.5 text-[#8067E8]" />}</div></div>; }) : <div className="text-center py-16 text-gray-400"><div className="w-14 h-14 rounded-full bg-[#FAF8FE] text-[#8067E8] flex items-center justify-center mx-auto mb-3"><MessageSquare className="w-7 h-7" /></div><h4 className="font-bold text-sm text-[#20243A]">No messages yet</h4><p className="text-xs text-gray-500 mt-1">Start the conversation below.</p></div>}<div ref={messagesEndRef} /></div>
+        {currentUser.role === 'buyer' && activeConv && <div className="px-4 py-2.5 bg-white border-t border-gray-100"><p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1.5 flex items-center gap-1"><Sparkles className="w-3 h-3 text-[#8067E8]" /> Quick Inquiries</p><div className="flex items-center gap-1.5 overflow-x-auto pb-1">{quickInquiries.map(q => <button type="button" key={q} onClick={() => void handleSend(q)} disabled={isSending} className="px-2.5 py-1 bg-[#FAF8FE] text-[#6C4DE6] text-xs font-semibold rounded-full border border-[#DDD4FF] whitespace-nowrap disabled:opacity-50">{q}</button>)}</div></div>}
+        <div className="p-4 bg-white border-t border-gray-100"><form onSubmit={e => { e.preventDefault(); void handleSend(); }} className="flex items-center gap-2"><input value={inputMessage} onChange={e => setInputMessage(e.target.value)} placeholder={activeConv ? `Message ${counterpart.name || 'user'}...` : 'Select a conversation...'} disabled={!activeConv || isSending} className="flex-1 px-4 py-3 bg-[#F7F5F3] rounded-full text-sm font-medium text-[#20243A] placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#8067E8]/40 border border-gray-200/80 disabled:opacity-60" /><button type="submit" disabled={!activeConv || !inputMessage.trim() || isSending} className="p-3 bg-[#8067E8] hover:bg-[#6E52E2] disabled:opacity-50 text-white rounded-full shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#8067E8]" aria-label="Send message" aria-busy={isSending}>{isSending ? <span className="block h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" aria-hidden="true" /> : <Send className="w-4 h-4" />}</button></form></div>
       </div>
     </div>
   );
