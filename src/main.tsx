@@ -4,22 +4,18 @@ import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
-// Firebase/Firestore is the source of truth for marketplace data. Old
-// browser-local demo/cache data must never be allowed to repopulate shops or
-// products after those records have been deleted from Firebase. Clear the
-// legacy cache before AppProvider initializes its state.
-const MARKETPLACE_CACHE_KEYS = [
-  'claymarket_shops_v2',
-  'claymarket_products',
-  'claymarket_cart',
-  'claymarket_wishlist',
-  'claymarket_followed_shops',
-  'claymarket_conversation_reads',
-] as const;
+// Firebase/Firestore is the source of truth for marketplace data.
+// Migrate only the two legacy marketplace caches once. User-owned caches
+// (cart, wishlist, followed shops, conversation read state) must persist.
+const MARKETPLACE_CACHE_MIGRATION_KEY = 'claymarket_cache_migrated_v1';
 
-for (const key of MARKETPLACE_CACHE_KEYS) {
+if (typeof window !== 'undefined') {
   try {
-    window.localStorage.removeItem(key);
+    if (!window.localStorage.getItem(MARKETPLACE_CACHE_MIGRATION_KEY)) {
+      window.localStorage.removeItem('claymarket_shops_v2');
+      window.localStorage.removeItem('claymarket_products');
+      window.localStorage.setItem(MARKETPLACE_CACHE_MIGRATION_KEY, '1');
+    }
   } catch {
     // localStorage may be unavailable/restricted; Firebase remains the source of truth.
   }
