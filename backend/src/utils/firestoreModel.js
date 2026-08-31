@@ -2,6 +2,7 @@ import { firestore, admin } from '../config/firebase.js';
 import crypto from 'node:crypto';
 
 const registry = new Map();
+const MAX_QUERY_RESULTS = 1000;
 
 const COLLECTIONS = {
   User: 'users', Market: 'markets', Category: 'categories', Shop: 'shops', Product: 'products',
@@ -135,30 +136,12 @@ function stripFirestoreValues(value) {
   return value;
 }
 
-async function allDocs(collection) {
-  const snap = await firestore().collection(collection).get();
+async function allDocs(collection, maxResults = MAX_QUERY_RESULTS) {
+  const snap = await firestore().collection(collection).limit(maxResults).get();
   return snap.docs.map(d => attachMethods({ _id: d.id, ...normalizeValue(d.data()) }, collection));
 }
 
-// Resolve id lookups directly and push simple scalar equality/$in filters into
-// Firestore. This avoids full-collection reads for the most common query
-// patterns while preserving the existing in-memory matcher for richer filters
-// such as regex, $or, $elemMatch, and array-element semantics.
-function canUseFirestoreWhere(filter = {}) {
-  if (!filter || !Object.keys(filter).length) return false;
-  if ('$or' in filter || '$and' in filter || '$nor' in filter || '$text' in filter) return false;
-  return Object.entries(filter).every(([field, condition]) => {
-    if (field.startsWith('$') || field === '_id') return false;
-    if (condition instanceof RegExp || condition instanceof Date || Array.isArray(condition)) return !Array.isArray(condition);
-    if (condition && typeof condition === 'object') {
-      const keys = Object.keys(condition);
-      return keys.length === 1 && keys[0] === '$in' && Array.isArray(condition.$in) && condition.$in.length > 0 && condition.$in.length <= 30 && condition.$in.every(v => v !== undefined);
-    }
-    return condition !== undefined && (typeof condition !== 'object' || condition === null);
-  });
-}
-
-async function docsForFilter(collection, filter) {
+async function docsForFilter(collection, filter, maxResults = MAX_QUERY_RESULTS) {
   const idCondition = filter && Object.prototype.hasOwnProperty.call(filter, '_id') ? filter._id : undefined;
 
   if (typeof idCondition === 'string') {
@@ -168,25 +151,28 @@ async function docsForFilter(collection, filter) {
   }
 
   if (idCondition && typeof idCondition === 'object' && Array.isArray(idCondition.$in)) {
-    const ids = [...new Set(idCondition.$in.map(String))];
+    const ids = [...new Set(idCondition.$in.map(String))].slice(0, maxResults);
     const snaps = await Promise.all(ids.map(id => firestore().collection(collection).doc(id).get()));
     return snaps.filter(s => s.exists).map(s => attachMethods({ _id: s.id, ...normalizeValue(s.data()) }, collection));
   }
 
-  if (canUseFirestoreWhere(filter)) {
-    let query = firestore().collection(collection);
-    for (const [field, condition] of Object.entries(filter)) {
-      if (condition && typeof condition === 'object' && !Array.isArray(condition) && '$in' in condition) {
-        query = query.where(field, 'in', condition.$in);
-      } else {
-        query = query.where(field, '==', condition);
-      }
-    }
-    const snap = await query.get();
+  let query = firestore().collection(collection);
+  let canUseNativeQuery = true;
+  for (const [field, condition] of Object.entries(filter || {})) {
+    if (field.startsWith('$') || field === '_id' || condition instanceof RegExp) { canUseNativeQuery = false; break; }
+    if (condition && typeof condition === 'object' && !Array.isArray(condition) && !(condition instanceof Date)) {
+      if ('$in' in condition) query = query.where(field, 'in', condition.$in.slice(0, 30));
+      else if ('$ne' in condition || '$nin' in condition || '$exists' in condition || '$elemMatch' in condition) { canUseNativeQuery = false; break; }
+      else { canUseNativeQuery = false; break; }
+    } else query = query.where(field, '==', condition);
+  }
+
+  if (canUseNativeQuery) {
+    const snap = await query.limit(maxResults).get();
     return snap.docs.map(d => attachMethods({ _id: d.id, ...normalizeValue(d.data()) }, collection));
   }
 
-  return allDocs(collection);
+  return allDocs(collection, maxResults);
 }
 
 function modelForPath(path) {
@@ -233,12 +219,13 @@ class Query {
     this.sortSpec = null; this.limitN = null; this.selectSpec = null; this.populateSpecs = [];
   }
   sort(spec) { this.sortSpec = spec; return this; }
-  limit(n) { this.limitN = Number(n); return this; }
+  limit(n) { this.limitN = Math.min(Math.max(Number(n) || 0, 0), MAX_QUERY_RESULTS); return this; }
   select(spec) { this.selectSpec = spec; return this; }
   lean() { return this; }
   populate(pathOrSpec, select) { this.populateSpecs.push({ path: typeof pathOrSpec === 'string' ? pathOrSpec : pathOrSpec?.path, select }); return this; }
   async exec() {
-    let docs = (await docsForFilter(this.collection, this.filter)).filter(d => matches(d, this.filter));
+    const requestedLimit = this.limitN == null ? MAX_QUERY_RESULTS : this.limitN;
+    let docs = (await docsForFilter(this.collection, this.filter, requestedLimit)).filter(d => matches(d, this.filter));
     if (this.sortSpec) {
       const entries = Object.entries(this.sortSpec);
       docs.sort((a, b) => {
@@ -284,7 +271,13 @@ export function createModel(name, collection = COLLECTIONS[name]) {
       return doc;
     },
     async exists(filter = {}) { return Boolean(await new Query(collection, filter, true).exec()); },
-    async countDocuments(filter = {}) { return (await new Query(collection, filter).exec()).length; },
+    async countDocuments(filter = {}) {
+      const idCondition = filter && filter._id;
+      if (typeof idCondition === 'string') return (await firestore().collection(collection).doc(idCondition).get()).exists ? 1 : 0;
+      const snap = await firestore().collection(collection).count().get();
+      if (!filter || !Object.keys(filter).length) return snap.data().count;
+      return (await new Query(collection, filter).exec()).length;
+    },
     async findByIdAndDelete(id) { const doc = await Model.findById(id); if (!doc) return null; await doc.deleteOne(); return doc; },
     async findByIdAndUpdate(id, update = {}, options = {}) {
       const doc = await Model.findById(id); if (!doc) return null;
@@ -296,10 +289,7 @@ export function createModel(name, collection = COLLECTIONS[name]) {
       for (const stage of pipeline) {
         if (stage.$match) docs = docs.filter(d => matches(d, stage.$match));
         if (stage.$group) {
-          const spec = stage.$group; const avgField = Object.entries(spec).find(([, v]) => v?.$avg)?.[1]?.$avg;
-          const sumField = Object.entries(spec).find(([, v]) => v?.$sum)?.[1]?.$sum;
-          const count = docs.length;
-          const out = { _id: null };
+          const spec = stage.$group; const count = docs.length; const out = { _id: null };
           for (const [key, value] of Object.entries(spec)) {
             if (key === '_id') continue;
             if (value?.$avg) out[key] = count ? docs.reduce((s, d) => s + Number(getValues(d, value.$avg)[0] || 0), 0) / count : 0;
