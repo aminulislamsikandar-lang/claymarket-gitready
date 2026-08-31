@@ -4,6 +4,13 @@ import { Product } from '../models/Product.js';
 import { ok, fail } from '../utils/apiResponse.js';
 
 const orderNumber = () => `CLM-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
+const STATUS_TRANSITIONS = {
+  pending: new Set(['confirmed', 'cancelled']),
+  confirmed: new Set(['ready_for_pickup', 'cancelled']),
+  ready_for_pickup: new Set(['completed', 'cancelled']),
+  completed: new Set(),
+  cancelled: new Set(),
+};
 
 export async function createOrder(req, res) {
   const { items, deliveryType = 'pickup', address = '' } = req.body || {};
@@ -26,7 +33,7 @@ export async function createOrder(req, res) {
     if (!Number.isInteger(quantity) || quantity < 1 || quantity > 999) return fail(res, 'Invalid quantity.');
     if (Number.isFinite(product.stock) && product.stock < quantity) return fail(res, `Insufficient stock for ${product.name}.`, 409);
     const unitPrice = Number(product.price);
-    if (!Number.isFinite(unitPrice) || unitPrice < 0) return fail(res, `Price is not available for ${product.name}. Please contact the seller.` , 409);
+    if (!Number.isFinite(unitPrice) || unitPrice < 0) return fail(res, `Price is not available for ${product.name}. Please contact the seller.`, 409);
     total += unitPrice * quantity;
     normalized.push({ productId: product._id, shopId: product.shopId, sellerId: product.sellerId, name: product.name, image: product.images?.find(i => i.isPrimary)?.url || product.images?.[0]?.url || '', unitPrice, quantity, selectedSize: String(item.selectedSize || ''), selectedColor: String(item.selectedColor || '') });
   }
@@ -51,7 +58,13 @@ export async function updateOrderStatus(req, res) {
   if (!order) return fail(res, 'Order not found.', 404);
   const ownsItem = order.items.some(i => i.sellerId.toString() === req.user._id.toString());
   if (req.user.role !== 'admin' && !ownsItem) return fail(res, 'You can only update your own orders.', 403);
-  order.status = req.body.status;
+
+  const nextStatus = req.body.status;
+  if (req.user.role !== 'admin' && !STATUS_TRANSITIONS[order.status]?.has(nextStatus)) {
+    return fail(res, `Cannot change order status from ${order.status} to ${nextStatus}.`, 409);
+  }
+
+  order.status = nextStatus;
   await order.save();
   return ok(res, order);
 }
