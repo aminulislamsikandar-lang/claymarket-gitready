@@ -19,17 +19,6 @@ export const firebaseMissingConfig = requiredKeys.filter(
 
 export const firebaseConfigured = firebaseMissingConfig.length === 0;
 
-// Firebase is the production source of truth. Clear legacy browser caches once
-// at startup so deleted demo shops/products cannot reappear after a refresh.
-if (typeof window !== 'undefined') {
-  try {
-    window.localStorage.removeItem('claymarket_shops_v2');
-    window.localStorage.removeItem('claymarket_products');
-  } catch {
-    // localStorage is optional; Firebase remains the source of truth.
-  }
-}
-
 if (!firebaseConfigured && import.meta.env.DEV) {
   console.warn(
     `Claymarket Firebase is not configured. Missing: ${firebaseMissingConfig.join(', ')}`,
