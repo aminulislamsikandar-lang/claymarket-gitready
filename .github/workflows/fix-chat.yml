@@ -1,0 +1,321 @@
+name: Apply reliable chat fix
+
+on:
+  push:
+    branches: [fix/reliable-direct-messaging]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Patch chat flow
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          api = Path('src/utils/api.ts')
+          api.write_text('''import { firebaseAuthClient } from '../firebase';
+
+const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api').replace(/\\/$/, '');
+
+export class ApiRequestError extends Error {
+  status?: number;
+  requestId?: string;
+  details?: unknown;
+
+  constructor(message: string, options: { status?: number; requestId?: string; details?: unknown } = {}) {
+    super(message);
+    this.name = 'ApiRequestError';
+    this.status = options.status;
+    this.requestId = options.requestId;
+    this.details = options.details;
+  }
+}
+
+export async function apiRequest<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
+  let token = localStorage.getItem('claymarket_auth_token');
+  if (firebaseAuthClient?.currentUser) {
+    try {
+      token = await firebaseAuthClient.currentUser.getIdToken();
+      if (token) localStorage.setItem('claymarket_auth_token', token);
+    } catch {
+      // Fall back to the cached token; the backend will reject it if expired.
+    }
+  }
+  const headers = new Headers(options.headers || {});
+  if (!headers.has('Content-Type') && options.body && !(options.body instanceof FormData)) headers.set('Content-Type', 'application/json');
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+
+  const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload?.success === false) {
+    throw new ApiRequestError(
+      payload?.message || `Request failed (${response.status})`,
+      {
+        status: response.status,
+        requestId: payload?.requestId || response.headers.get('X-Request-Id') || undefined,
+        details: payload?.details,
+      },
+    );
+  }
+  return (payload?.data ?? payload) as T;
+}
+
+export const setAuthToken = (token: string) => localStorage.setItem('claymarket_auth_token', token);
+export const clearAuthToken = () => localStorage.removeItem('claymarket_auth_token');
+''')
+
+          app = Path('src/context/AppContext.tsx')
+          text = app.read_text()
+
+          old_send = '''      try {
+        await apiRequest(`/conversations/${conversationId}/messages`, {
+          method: 'POST',
+          body: JSON.stringify({ text: trimmed }),
+        });
+        await fetchConversations();
+      } catch {
+        showToast('Message failed to send. Check your connection and try again.', 'error');
+        setConversations(prev => prev.map(conv => conv.id === conversationId ? {
+          ...conv,
+          messages: conv.messages.filter(m => m.id !== tempId),
+        } : conv));
+      }'''
+          new_send = '''      try {
+        await apiRequest(`/conversations/${conversationId}/messages`, {
+          method: 'POST',
+          body: JSON.stringify({ text: trimmed }),
+        });
+        await fetchConversations();
+      } catch (error) {
+        const apiError = error as { message?: string; status?: number; requestId?: string };
+        console.error('[Claymarket messaging] sendMessage failed', {
+          conversationId,
+          message: apiError?.message || String(error),
+          status: apiError?.status,
+          requestId: apiError?.requestId,
+        });
+        showToast('Message failed to send. Check your connection and try again.', 'error');
+        setConversations(prev => prev.map(conv => conv.id === conversationId ? {
+          ...conv,
+          messages: conv.messages.filter(m => m.id !== tempId),
+        } : conv));
+      }'''
+          if old_send not in text:
+              raise SystemExit('sendMessage block not found')
+          text = text.replace(old_send, new_send, 1)
+
+          old_start = '''      } catch {
+        showToast('Could not start the chat. Please check your connection and try again.', 'error');
+        setConversations(prev => prev.filter(c => c.id !== tempConvId));
+      }'''
+          new_start = '''      } catch (error) {
+        const apiError = error as { message?: string; status?: number; requestId?: string };
+        console.error('[Claymarket messaging] createConversation failed', {
+          shopId: shop.id,
+          sellerId: shop.ownerId,
+          message: apiError?.message || String(error),
+          status: apiError?.status,
+          requestId: apiError?.requestId,
+        });
+        showToast('Could not start the chat. Please check your connection and try again.', 'error');
+        setConversations(prev => prev.filter(c => c.id !== tempConvId));
+      }'''
+          if old_start not in text:
+              raise SystemExit('startChat catch block not found')
+          text = text.replace(old_start, new_start, 1)
+          app.write_text(text)
+
+          auth = Path('backend/src/middleware/auth.js')
+          auth.write_text('''import { firebaseAuth } from '../config/firebase.js';
+import { User } from '../models/User.js';
+
+export async function authenticateUser(req, res, next) {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (!token) return res.status(401).json({ success: false, message: 'Authentication required.', requestId: req.id });
+
+  try {
+    const decoded = await firebaseAuth().verifyIdToken(token);
+    const user = await User.findById(decoded.uid);
+    if (!user) return res.status(401).json({ success: false, message: 'User profile not found.', requestId: req.id });
+    req.user = user;
+    req.firebaseUser = decoded;
+    next();
+  } catch (error) {
+    console.error(`[${req.id || 'no-request-id'}] Firebase authentication failed:`, {
+      code: error?.code,
+      message: error?.message,
+      name: error?.name,
+    });
+    return res.status(401).json({ success: false, message: 'Invalid or expired Firebase session.', requestId: req.id });
+  }
+}
+
+export const requireRole = (...roles) => (req, res, next) => {
+  if (!req.user || !roles.includes(req.user.role)) {
+    return res.status(403).json({ success: false, message: 'You do not have permission for this action.' });
+  }
+  next();
+};
+
+export const requireSeller = requireRole('seller', 'admin');
+export const requireAdmin = requireRole('admin');
+''')
+
+          controller = Path('backend/src/controllers/messageController.js')
+          controller.write_text('''import { Conversation } from '../models/Conversation.js';
+import { Message } from '../models/Message.js';
+import { Shop } from '../models/Shop.js';
+import { Product } from '../models/Product.js';
+import { ok, fail } from '../utils/apiResponse.js';
+
+const authUserId = (req) => String(req.firebaseUser?.uid || req.user?._id || '');
+const valueId = (value) => String(value?._id || value || '');
+
+function canAccessConversation(conv, userId, role) {
+  if (role === 'admin') return true;
+  const uid = String(userId || '');
+  return uid && (valueId(conv?.buyerId) === uid || valueId(conv?.sellerId) === uid);
+}
+
+export const listConversations = async (req, res) => {
+  const userId = authUserId(req);
+  if (!userId) return fail(res, 'Authentication required.', 401);
+
+  const filter = req.user.role === 'admin'
+    ? {}
+    : { $or: [{ buyerId: userId }, { sellerId: userId }] };
+
+  const conversations = await Conversation.find(filter)
+    .populate('buyerId', 'name avatar')
+    .populate('sellerId', 'name avatar')
+    .populate('shopId', 'name profileImage')
+    .populate('productId', 'name images price')
+    .sort({ updatedAt: -1 });
+
+  return ok(res, conversations);
+};
+
+export const createConversation = async (req, res) => {
+  const { shopId, productId } = req.body || {};
+  const requestedSellerId = String(req.body?.sellerId || '').trim();
+  const buyerId = authUserId(req);
+
+  if (!buyerId) return fail(res, 'Authentication required.', 401);
+  if (!shopId) return fail(res, 'shopId is required.');
+
+  try {
+    const shop = await Shop.findById(String(shopId));
+    const sellerId = valueId(shop?.ownerId) || requestedSellerId;
+    if (!sellerId) return fail(res, 'This shop does not have a seller assigned.');
+    if (sellerId === buyerId) return fail(res, 'You cannot message yourself.');
+
+    let validProductId = '';
+    if (productId) {
+      const exists = await Product.exists({ _id: String(productId), shopId: String(shopId) });
+      if (exists) validProductId = String(productId);
+    }
+
+    const baseFilter = { buyerId, sellerId, shopId: String(shopId) };
+    let conversation = validProductId
+      ? await Conversation.findOne({ ...baseFilter, productId: validProductId })
+      : await Conversation.findOne(baseFilter);
+
+    if (!conversation) {
+      conversation = await Conversation.create({
+        ...baseFilter,
+        ...(validProductId ? { productId: validProductId } : {}),
+      });
+    }
+
+    return ok(res, conversation, 201);
+  } catch (error) {
+    console.error(`[${req.id || 'no-request-id'}] createConversation failed:`, {
+      code: error?.code,
+      message: error?.message,
+      name: error?.name,
+      shopId: String(shopId),
+      productId: productId ? String(productId) : undefined,
+      buyerId,
+    });
+    throw error;
+  }
+};
+
+export const listMessages = async (req, res) => {
+  const userId = authUserId(req);
+  if (!userId) return fail(res, 'Authentication required.', 401);
+
+  const conversation = await Conversation.findById(String(req.params.id));
+  if (!conversation) return fail(res, 'Conversation not found.', 404);
+
+  if (!canAccessConversation(conversation, userId, req.user.role)) {
+    return fail(res, 'You do not have access to this conversation.', 403);
+  }
+
+  const messages = await Message.find({ conversationId: conversation._id })
+    .populate('senderId', 'name avatar role')
+    .sort({ createdAt: 1 });
+
+  return ok(res, messages);
+};
+
+export const sendMessage = async (req, res) => {
+  const userId = authUserId(req);
+  if (!userId) return fail(res, 'Authentication required.', 401);
+
+  let conversationId = String(req.params.id || '').trim();
+  const text = String(req.body?.text || '').trim();
+  if (!conversationId) return fail(res, 'Conversation ID is required.');
+  if (!text) return fail(res, 'Message text is required.');
+
+  // The UI may optimistically open a new thread with conv_pending_<shopId>_<timestamp>.
+  // Resolve that temporary id on the server too, so an early Quick Inquiry/send
+  // cannot be lost even if it races the POST /conversations request.
+  if (conversationId.startsWith('conv_pending_')) {
+    const parts = conversationId.split('_');
+    const shopId = parts.slice(2, -1).join('_');
+    if (shopId) {
+      const shop = await Shop.findById(shopId);
+      const sellerId = valueId(shop?.ownerId);
+      if (!sellerId || sellerId === userId) return fail(res, 'This shop does not have a seller assigned.');
+      let conversation = await Conversation.findOne({ buyerId: userId, sellerId, shopId });
+      if (!conversation) conversation = await Conversation.create({ buyerId: userId, sellerId, shopId });
+      conversationId = String(conversation._id);
+    }
+  }
+
+  const conversation = await Conversation.findById(conversationId);
+  if (!conversation) return fail(res, 'Conversation not found.', 404);
+
+  if (!canAccessConversation(conversation, userId, req.user.role)) {
+    return fail(res, 'You do not have access to this conversation.', 403);
+  }
+
+  const message = await Message.create({ conversationId, senderId: userId, text });
+  conversation.updatedAt = new Date();
+  await conversation.save();
+
+  return ok(res, await message.populate('senderId', 'name avatar role'), 201);
+};
+''')
+
+          # Remove this one-shot workflow after applying the patch.
+          workflow = Path('.github/workflows/fix-chat.yml')
+          workflow.unlink(missing_ok=True)
+          PY
+
+      - name: Commit chat fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/utils/api.ts src/context/AppContext.tsx backend/src/middleware/auth.js backend/src/controllers/messageController.js .github/workflows/fix-chat.yml
+          git commit -m "Fix reliable direct messaging" || exit 0
+          git push
