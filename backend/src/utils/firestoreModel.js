@@ -216,15 +216,16 @@ async function populateDocument(doc, spec) {
 class Query {
   constructor(collection, filter, single = false) {
     this.collection = collection; this.filter = filter; this.single = single;
-    this.sortSpec = null; this.limitN = null; this.selectSpec = null; this.populateSpecs = [];
+    this.sortSpec = null; this.skipN = 0; this.limitN = null; this.selectSpec = null; this.populateSpecs = [];
   }
   sort(spec) { this.sortSpec = spec; return this; }
+  skip(n) { this.skipN = Math.min(Math.max(Number(n) || 0, 0), MAX_QUERY_RESULTS); return this; }
   limit(n) { this.limitN = Math.min(Math.max(Number(n) || 0, 0), MAX_QUERY_RESULTS); return this; }
   select(spec) { this.selectSpec = spec; return this; }
   lean() { return this; }
   populate(pathOrSpec, select) { this.populateSpecs.push({ path: typeof pathOrSpec === 'string' ? pathOrSpec : pathOrSpec?.path, select }); return this; }
   async exec() {
-    const requestedLimit = this.limitN == null ? MAX_QUERY_RESULTS : this.limitN;
+    const requestedLimit = this.limitN == null ? MAX_QUERY_RESULTS : Math.min(MAX_QUERY_RESULTS, this.skipN + this.limitN);
     let docs = (await docsForFilter(this.collection, this.filter, requestedLimit)).filter(d => matches(d, this.filter));
     if (this.sortSpec) {
       const entries = Object.entries(this.sortSpec);
@@ -237,6 +238,7 @@ class Query {
         return 0;
       });
     }
+    if (this.skipN) docs = docs.slice(this.skipN);
     if (this.limitN != null) docs = docs.slice(0, this.limitN);
     if (this.single) docs = docs.slice(0, 1);
     const output = this.single ? (docs[0] || null) : docs;
