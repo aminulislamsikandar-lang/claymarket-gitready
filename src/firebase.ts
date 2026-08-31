@@ -19,6 +19,18 @@ export const firebaseMissingConfig = requiredKeys.filter(
 
 export const firebaseConfigured = firebaseMissingConfig.length === 0;
 
+// The marketplace now treats Firestore as the source of truth for shops.
+// Older builds stored demo/deleted shops in localStorage under this key, which
+// were then merged back into the live Firestore list after a refresh. Clear
+// that legacy cache once at startup so deleted demo shops cannot reappear.
+if (typeof window !== 'undefined') {
+  try {
+    window.localStorage.removeItem('claymarket_shops_v2');
+  } catch {
+    // localStorage is optional; Firestore remains the source of truth.
+  }
+}
+
 if (!firebaseConfigured && import.meta.env.DEV) {
   console.warn(
     `Claymarket Firebase is not configured. Missing: ${firebaseMissingConfig.join(', ')}`,
