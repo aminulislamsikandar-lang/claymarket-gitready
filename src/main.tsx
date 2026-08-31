@@ -15,7 +15,7 @@ if (typeof window !== 'undefined') {
     if (!window.localStorage.getItem(MARKETPLACE_CACHE_MIGRATION_KEY)) {
       window.localStorage.removeItem('claymarket_shops_v2');
       window.localStorage.removeItem('claymarket_products');
-      window.localStorage.setItem(MARKETPLACE_CACHE_MIGRATED_V1, '1');
+      window.localStorage.setItem(MARKETPLACE_CACHE_MIGRATION_KEY, '1');
     }
   } catch {
     // localStorage may be unavailable/restricted; Firebase remains the source of truth.
