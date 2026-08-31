@@ -4,7 +4,10 @@ import { Shop } from '../models/Shop.js';
 import { ok, fail } from '../utils/apiResponse.js';
 
 const MAX_SEARCH_LENGTH = 80;
+const MAX_PAGE_SIZE = 50;
 const escapeRegex = (value) => String(value).slice(0, MAX_SEARCH_LENGTH).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const parsePage = (value) => Math.max(1, Number.parseInt(value, 10) || 1);
+const parseLimit = (value) => Math.min(MAX_PAGE_SIZE, Math.max(1, Number.parseInt(value, 10) || 20));
 
 export const listShops = async (req, res) => {
   const filter = {};
@@ -13,8 +16,11 @@ export const listShops = async (req, res) => {
   if (req.query.state) filter.state = new RegExp(escapeRegex(req.query.state), 'i');
   if (req.query.district) filter.district = new RegExp(escapeRegex(req.query.district), 'i');
   if (req.query.marketName) filter.marketName = new RegExp(escapeRegex(req.query.marketName), 'i');
-  const shops = await Shop.find(filter).populate('marketId', 'name slug').populate('categoryIds', 'name slug').sort({ name: 1 });
-  return ok(res, shops);
+  const page = parsePage(req.query.page);
+  const limit = parseLimit(req.query.limit);
+  const shops = await Shop.find(filter).populate('marketId', 'name slug').populate('categoryIds', 'name slug').sort({ name: 1 }).skip((page - 1) * limit).limit(limit);
+  const total = await Shop.countDocuments(filter);
+  return ok(res, { shops, pagination: { page, limit, total, totalPages: Math.ceil(total / limit), hasNextPage: page * limit < total, hasPreviousPage: page > 1 } });
 };
 
 export const getShop = async (req, res) => {
