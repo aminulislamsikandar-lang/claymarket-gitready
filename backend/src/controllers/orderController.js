@@ -37,9 +37,18 @@ export async function createOrder(req, res) {
     const order = await db.runTransaction(async transaction => {
       const productSnaps = await transaction.getAll(...productRefs);
       const products = new Map();
+      const shopIds = new Set();
       for (const snap of productSnaps) {
-        if (snap.exists) products.set(snap.id, { _id: snap.id, ...snap.data() });
+        if (snap.exists) {
+          const product = { _id: snap.id, ...snap.data() };
+          products.set(snap.id, product);
+          if (product.shopId) shopIds.add(String(product.shopId));
+        }
       }
+
+      const shopRefs = [...shopIds].map(id => db.collection('shops').doc(id));
+      const shopSnaps = shopRefs.length ? await transaction.getAll(...shopRefs) : [];
+      const shops = new Map(shopSnaps.filter(snap => snap.exists).map(snap => [snap.id, snap.data()]));
 
       const normalized = [];
       let total = 0;
@@ -48,6 +57,12 @@ export async function createOrder(req, res) {
         const product = products.get(productId);
         const requestedQuantity = requestedByProduct.get(productId);
         if (!product || product.status !== 'published') return { error: 'unavailable' };
+
+        // A missing legacy flag is treated as enabled so existing shops remain orderable.
+        if (product.shopId && shops.has(String(product.shopId)) && shops.get(String(product.shopId)).onlineOrdering === false) {
+          return { error: 'offline', shopName: shops.get(String(product.shopId)).name || 'This shop' };
+        }
+
         const stock = Number(product.stock ?? 0);
         if (!Number.isFinite(stock) || stock < requestedQuantity) return { error: 'stock', productName: product.name };
         const unitPrice = Number(product.price);
@@ -94,6 +109,7 @@ export async function createOrder(req, res) {
     });
 
     if (order?.error === 'unavailable') return fail(res, 'One or more products are unavailable.', 409);
+    if (order?.error === 'offline') return fail(res, `${order.shopName || 'This shop'} is not accepting online orders right now.`, 409);
     if (order?.error === 'stock') return fail(res, `Insufficient stock for ${order.productName || 'one or more products'}.`, 409);
     if (order?.error === 'price') return fail(res, `Price is not available for ${order.productName || 'one or more products'}. Please contact the seller.`, 409);
     return ok(res, order, 201);
