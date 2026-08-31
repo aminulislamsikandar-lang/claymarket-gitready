@@ -13,6 +13,7 @@ import { AuthModal } from './components/AuthModal';
 import { CookieConsent } from './components/CookieConsent';
 import { Analytics } from './components/Analytics';
 import { SEO } from './components/SEO';
+import { ShopOnlineOrderStatus } from './components/ShopOnlineOrderStatus';
 
 // Everything below is only needed once someone navigates away from the
 // homepage, so it is code-split into its own chunk instead of bloating the
@@ -53,7 +54,12 @@ const AppContent: React.FC = () => {
       case 'category-detail':
         return selectedCategory ? <CategoryDetailView /> : <NotFoundPage />;
       case 'shop-detail':
-        return selectedShop ? <ShopProfileView /> : <NotFoundPage />;
+        return selectedShop ? (
+          <div className="space-y-3">
+            <ShopOnlineOrderStatus shop={selectedShop} />
+            <ShopProfileView />
+          </div>
+        ) : <NotFoundPage />;
       case 'product-detail':
         return selectedProduct ? <ProductDetailView /> : <NotFoundPage />;
       case 'shops':
