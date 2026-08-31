@@ -51,16 +51,21 @@ export const createConversation = async (req, res) => {
       if (exists) validProductId = String(productId);
     }
 
+    // Direct seller chat is one thread per buyer/shop. A product is optional
+    // context for that thread, not a separate conversation identity. This also
+    // prevents a race with an early message sent against a temporary id from
+    // creating a second thread when the normal POST /conversations arrives.
     const baseFilter = { buyerId, sellerId, shopId: String(shopId) };
-    let conversation = validProductId
-      ? await Conversation.findOne({ ...baseFilter, productId: validProductId })
-      : await Conversation.findOne(baseFilter);
+    let conversation = await Conversation.findOne(baseFilter);
 
     if (!conversation) {
       conversation = await Conversation.create({
         ...baseFilter,
         ...(validProductId ? { productId: validProductId } : {}),
       });
+    } else if (validProductId && !valueId(conversation.productId)) {
+      conversation.productId = validProductId;
+      await conversation.save();
     }
 
     return ok(res, conversation, 201);
