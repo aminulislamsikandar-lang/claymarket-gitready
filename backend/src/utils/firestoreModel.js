@@ -140,15 +140,24 @@ async function allDocs(collection) {
   return snap.docs.map(d => attachMethods({ _id: d.id, ...normalizeValue(d.data()) }, collection));
 }
 
-// findById() and any filter keyed on a plain `_id` equality (or `_id: {$in:
-// [...]}`) is the hot path here — it runs on every authenticated request via
-// the auth middleware, and throughout every controller. Scanning and reading
-// every document in the collection just to resolve one or a few ids is a
-// real Firestore cost/latency problem (full collection read billed on every
-// call, and it only gets slower as a collection grows). Resolve those cases
-// with direct document reads instead; everything else keeps the original
-// collection-scan behavior since the in-memory query layer needs to support
-// arbitrary Mongo-style filters.
+// Resolve id lookups directly and push simple scalar equality/$in filters into
+// Firestore. This avoids full-collection reads for the most common query
+// patterns while preserving the existing in-memory matcher for richer filters
+// such as regex, $or, $elemMatch, and array-element semantics.
+function canUseFirestoreWhere(filter = {}) {
+  if (!filter || !Object.keys(filter).length) return false;
+  if ('$or' in filter || '$and' in filter || '$nor' in filter || '$text' in filter) return false;
+  return Object.entries(filter).every(([field, condition]) => {
+    if (field.startsWith('$') || field === '_id') return false;
+    if (condition instanceof RegExp || condition instanceof Date || Array.isArray(condition)) return !Array.isArray(condition);
+    if (condition && typeof condition === 'object') {
+      const keys = Object.keys(condition);
+      return keys.length === 1 && keys[0] === '$in' && Array.isArray(condition.$in) && condition.$in.length > 0 && condition.$in.length <= 30 && condition.$in.every(v => v !== undefined);
+    }
+    return condition !== undefined && (typeof condition !== 'object' || condition === null);
+  });
+}
+
 async function docsForFilter(collection, filter) {
   const idCondition = filter && Object.prototype.hasOwnProperty.call(filter, '_id') ? filter._id : undefined;
 
@@ -162,6 +171,19 @@ async function docsForFilter(collection, filter) {
     const ids = [...new Set(idCondition.$in.map(String))];
     const snaps = await Promise.all(ids.map(id => firestore().collection(collection).doc(id).get()));
     return snaps.filter(s => s.exists).map(s => attachMethods({ _id: s.id, ...normalizeValue(s.data()) }, collection));
+  }
+
+  if (canUseFirestoreWhere(filter)) {
+    let query = firestore().collection(collection);
+    for (const [field, condition] of Object.entries(filter)) {
+      if (condition && typeof condition === 'object' && !Array.isArray(condition) && '$in' in condition) {
+        query = query.where(field, 'in', condition.$in);
+      } else {
+        query = query.where(field, '==', condition);
+      }
+    }
+    const snap = await query.get();
+    return snap.docs.map(d => attachMethods({ _id: d.id, ...normalizeValue(d.data()) }, collection));
   }
 
   return allDocs(collection);
