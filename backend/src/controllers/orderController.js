@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
+import { firestore } from '../config/firebase.js';
 import { Order } from '../models/Order.js';
-import { Product } from '../models/Product.js';
 import { ok, fail } from '../utils/apiResponse.js';
 
 const orderNumber = () => `CLM-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
@@ -19,27 +19,87 @@ export async function createOrder(req, res) {
   if (deliveryType === 'delivery' && !String(address).trim()) return fail(res, 'Delivery address is required.');
   if (items.length > 50) return fail(res, 'Too many items in one order.');
 
-  const ids = items.map(i => i?.productId);
-  if (ids.some(id => !Boolean(id))) return fail(res, 'Invalid product id.');
-  const products = await Product.find({ _id: { $in: ids }, status: 'published' });
-  const byId = new Map(products.map(p => [p._id.toString(), p]));
-  const normalized = [];
-  let total = 0;
-
+  const requestedByProduct = new Map();
   for (const item of items) {
-    const product = byId.get(String(item.productId));
-    const quantity = Number(item.quantity);
-    if (!product) return fail(res, 'One or more products are unavailable.', 409);
+    const productId = String(item?.productId || '').trim();
+    const quantity = Number(item?.quantity);
+    if (!productId) return fail(res, 'Invalid product id.');
     if (!Number.isInteger(quantity) || quantity < 1 || quantity > 999) return fail(res, 'Invalid quantity.');
-    if (Number.isFinite(product.stock) && product.stock < quantity) return fail(res, `Insufficient stock for ${product.name}.`, 409);
-    const unitPrice = Number(product.price);
-    if (!Number.isFinite(unitPrice) || unitPrice < 0) return fail(res, `Price is not available for ${product.name}. Please contact the seller.`, 409);
-    total += unitPrice * quantity;
-    normalized.push({ productId: product._id, shopId: product.shopId, sellerId: product.sellerId, name: product.name, image: product.images?.find(i => i.isPrimary)?.url || product.images?.[0]?.url || '', unitPrice, quantity, selectedSize: String(item.selectedSize || ''), selectedColor: String(item.selectedColor || '') });
+    requestedByProduct.set(productId, (requestedByProduct.get(productId) || 0) + quantity);
   }
 
-  const order = await Order.create({ orderNumber: orderNumber(), buyerId: req.user._id, items: normalized, totalAmount: total, deliveryType, address: String(address || '').trim() });
-  return ok(res, order, 201);
+  const orderId = `order_${crypto.randomUUID()}`;
+  const orderRef = firestore().collection('orders').doc(orderId);
+  const productRefs = [...requestedByProduct.keys()].map(id => firestore().collection('products').doc(id));
+
+  try {
+    const order = await firestore().runTransaction(async transaction => {
+      const productSnaps = await Promise.all(productRefs.map(ref => transaction.get(ref)));
+      const products = new Map();
+      for (const snap of productSnaps) {
+        if (snap.exists) products.set(snap.id, { _id: snap.id, ...snap.data() });
+      }
+
+      const normalized = [];
+      let total = 0;
+      for (const item of items) {
+        const productId = String(item.productId);
+        const product = products.get(productId);
+        const requestedQuantity = requestedByProduct.get(productId);
+        if (!product || product.status !== 'published') return { error: 'unavailable' };
+        const stock = Number(product.stock ?? 0);
+        if (!Number.isFinite(stock) || stock < requestedQuantity) return { error: 'stock', productName: product.name };
+        const unitPrice = Number(product.price);
+        if (!Number.isFinite(unitPrice) || unitPrice < 0) return { error: 'price', productName: product.name };
+
+        const quantity = Number(item.quantity);
+        total += unitPrice * quantity;
+        normalized.push({
+          productId: product._id,
+          shopId: product.shopId,
+          sellerId: product.sellerId,
+          name: product.name,
+          image: product.images?.find(i => i.isPrimary)?.url || product.images?.[0]?.url || '',
+          unitPrice,
+          quantity,
+          selectedSize: String(item.selectedSize || ''),
+          selectedColor: String(item.selectedColor || ''),
+        });
+      }
+
+      for (const [productId, quantity] of requestedByProduct) {
+        const product = products.get(productId);
+        const productRef = firestore().collection('products').doc(productId);
+        transaction.update(productRef, {
+          stock: Number(product.stock) - quantity,
+          updatedAt: new Date(),
+        });
+      }
+
+      const now = new Date();
+      const orderData = {
+        _id: orderId,
+        orderNumber: orderNumber(),
+        buyerId: req.user._id,
+        items: normalized,
+        totalAmount: total,
+        deliveryType,
+        address: String(address || '').trim(),
+        status: 'pending',
+        createdAt: now,
+        updatedAt: now,
+      };
+      transaction.set(orderRef, orderData);
+      return orderData;
+    });
+
+    if (order?.error === 'unavailable') return fail(res, 'One or more products are unavailable.', 409);
+    if (order?.error === 'stock') return fail(res, `Insufficient stock for ${order.productName || 'one or more products'}.`, 409);
+    if (order?.error === 'price') return fail(res, `Price is not available for ${order.productName || 'one or more products'}. Please contact the seller.`, 409);
+    return ok(res, order, 201);
+  } catch (error) {
+    return fail(res, error.message || 'Unable to create order.', 500);
+  }
 }
 
 export async function listBuyerOrders(req, res) {
