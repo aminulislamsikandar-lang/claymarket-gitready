@@ -32,15 +32,16 @@ export const getShop = async (req, res) => {
 };
 
 export const createShop = async (req, res) => {
-  const { name, marketId, categoryIds = [], profileImage = '', coverImage = '', description = '', phone = '', address = '', hours = {}, state = '', district = '' } = req.body || {};
+  const { name, marketId, categoryIds = [], profileImage = '', coverImage = '', description = '', phone = '', address = '', hours = {}, state = '', district = '', onlineOrdering = false } = req.body || {};
   if (!name || !marketId) return fail(res, 'Shop name and market are required.');
   if (req.user.role !== 'seller' && req.user.role !== 'admin') return fail(res, 'Seller access required.', 403);
+  if (typeof onlineOrdering !== 'boolean') return fail(res, 'onlineOrdering must be true or false.');
   if (!await Market.exists({ _id: marketId })) return fail(res, 'Market not found.', 404);
   if (categoryIds.length && await Category.countDocuments({ _id: { $in: categoryIds } }) !== categoryIds.length) return fail(res, 'One or more categories are invalid.');
   const slugBase = name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   const slug = `${slugBase}-${Date.now()}`;
   const market = await Market.findById(marketId);
-  const shop = await Shop.create({ ownerId: req.user._id, name, slug, marketId, marketName: market?.name || '', state: String(state).trim(), district: String(district).trim(), categoryIds, profileImage, coverImage, description, phone, address, hours });
+  const shop = await Shop.create({ ownerId: req.user._id, name, slug, marketId, marketName: market?.name || '', state: String(state).trim(), district: String(district).trim(), categoryIds, profileImage, coverImage, description, phone, address, hours, onlineOrdering });
   return ok(res, await shop.populate('marketId', 'name slug'), 201);
 };
 
@@ -48,7 +49,7 @@ export const updateShop = async (req, res) => {
   const shop = await Shop.findById(req.params.id);
   if (!shop) return fail(res, 'Shop not found.', 404);
   if (req.user.role !== 'admin' && shop.ownerId.toString() !== req.user._id.toString()) return fail(res, 'You can only edit your own shop.', 403);
-  const allowed = ['name','marketId','marketName','state','district','categoryIds','profileImage','coverImage','description','phone','address','hours'];
+  const allowed = ['name','marketId','marketName','state','district','categoryIds','profileImage','coverImage','description','phone','address','hours','onlineOrdering'];
   if ('marketId' in req.body) {
     if (!await Market.exists({ _id: req.body.marketId })) return fail(res, 'Market not found.', 404);
     shop.marketId = req.body.marketId;
@@ -60,6 +61,7 @@ export const updateShop = async (req, res) => {
     if (ids.length && await Category.countDocuments({ _id: { $in: ids } }) !== ids.length) return fail(res, 'One or more categories are invalid.');
     shop.categoryIds = ids;
   }
+  if ('onlineOrdering' in req.body && typeof req.body.onlineOrdering !== 'boolean') return fail(res, 'onlineOrdering must be true or false.');
   for (const key of allowed.filter(k => !['marketId','categoryIds'].includes(k))) if (key in req.body) shop[key] = req.body[key];
   await shop.save();
   return ok(res, await shop.populate('marketId', 'name slug'));
