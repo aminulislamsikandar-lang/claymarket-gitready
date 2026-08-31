@@ -29,12 +29,13 @@ export async function createOrder(req, res) {
   }
 
   const orderId = `order_${crypto.randomUUID()}`;
-  const orderRef = firestore().collection('orders').doc(orderId);
-  const productRefs = [...requestedByProduct.keys()].map(id => firestore().collection('products').doc(id));
+  const db = firestore();
+  const orderRef = db.collection('orders').doc(orderId);
+  const productRefs = [...requestedByProduct.keys()].map(id => db.collection('products').doc(id));
 
   try {
-    const order = await firestore().runTransaction(async transaction => {
-      const productSnaps = await Promise.all(productRefs.map(ref => transaction.get(ref)));
+    const order = await db.runTransaction(async transaction => {
+      const productSnaps = await transaction.getAll(...productRefs);
       const products = new Map();
       for (const snap of productSnaps) {
         if (snap.exists) products.set(snap.id, { _id: snap.id, ...snap.data() });
@@ -69,8 +70,7 @@ export async function createOrder(req, res) {
 
       for (const [productId, quantity] of requestedByProduct) {
         const product = products.get(productId);
-        const productRef = firestore().collection('products').doc(productId);
-        transaction.update(productRef, {
+        transaction.update(db.collection('products').doc(productId), {
           stock: Number(product.stock) - quantity,
           updatedAt: new Date(),
         });
