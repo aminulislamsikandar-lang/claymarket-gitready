@@ -33,7 +33,7 @@ export async function apiRequest<T = unknown>(path: string, options: RequestInit
   const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || payload?.success === false) {
-    throw new ApiRequestError(
+    const error = new ApiRequestError(
       payload?.message || `Request failed (${response.status})`,
       {
         status: response.status,
@@ -41,6 +41,15 @@ export async function apiRequest<T = unknown>(path: string, options: RequestInit
         details: payload?.details,
       },
     );
+    console.error('[Claymarket API] request failed', {
+      path,
+      method: options.method || 'GET',
+      message: error.message,
+      status: error.status,
+      requestId: error.requestId,
+      details: error.details,
+    });
+    throw error;
   }
   return (payload?.data ?? payload) as T;
 }
