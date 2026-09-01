@@ -1,103 +1,921 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
-import { User, Market, Shop, Product, Category, Conversation, ChatMessage, Order, CartItem, AppView, NavigationTab } from '../types';
-import { MOCK_USERS, MOCK_CATEGORIES, INITIAL_ORDERS } from '../data/mockData';
+import { 
+  User, Market, Shop, Product, Category, 
+  Conversation, ChatMessage, Order, CartItem, AppView, NavigationTab 
+} from '../types';
+import { 
+  MOCK_USERS,
+  MOCK_CATEGORIES, INITIAL_ORDERS 
+} from '../data/mockData';
 import { apiRequest, clearAuthToken, setAuthToken } from '../utils/api';
 import { firebaseAuthClient, firebaseDb, firebaseConfigured } from '../firebase';
-import { createUserWithEmailAndPassword, deleteUser, onAuthStateChanged, signInWithEmailAndPassword, signOut, updateProfile, type User as FirebaseUser } from 'firebase/auth';
-import { collection, deleteDoc, deleteField, doc, getDoc, getDocs, limit, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
+import {
+  createUserWithEmailAndPassword,
+  deleteUser,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signOut,
+  updateProfile,
+  type User as FirebaseUser,
+} from 'firebase/auth';
+import {
+  collection,
+  deleteDoc,
+  deleteField,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+  where,
+  writeBatch,
+} from 'firebase/firestore';
 import { uploadToCloudinary } from '../utils/cloudinary';
 import { validateImageFile } from '../utils/imageOptimizer';
 
-interface Toast { id: string; message: string; type?: 'success' | 'info' | 'warning' | 'error'; }
-const MAX_PUBLIC_SHOPS = 100;
-const MAX_PUBLIC_PRODUCTS = 200;
-
-interface AppContextType {
-  currentView: AppView; activeNavTab: NavigationTab; navigateTo: (view: AppView, params?: { market?: Market; shop?: Shop; product?: Product; category?: Category; searchTerm?: string }) => void; goBack: () => void;
-  selectedMarket: Market | null; selectedShop: Shop | null; selectedProduct: Product | null; selectedCategory: Category | null;
-  searchQuery: string; setSearchQuery: (query: string) => void; performSearch: (query: string) => void;
-  filteredMarkets: Market[]; filteredShops: Shop[]; filteredProducts: Product[]; currentUser: User;
-  loginUser: (email: string, password: string) => Promise<void>; registerAccount: (data: { name: string; email: string; password: string; phone?: string }) => Promise<void>;
-  registerSeller: (data: { name: string; phone?: string; shop: { name: string; marketId: string; categoryId: string; state: string; district: string; address?: string } }) => Promise<void>;
-  logoutUser: () => Promise<void>; updateProfilePicture: (file: File) => Promise<void>;
-  isAuthModalOpen: boolean; setIsAuthModalOpen: (open: boolean) => void; authModalTab: 'login' | 'register' | 'become-seller'; setAuthModalTab: (tab: 'login' | 'register' | 'become-seller') => void;
-  markets: Market[]; addMarketAdmin: (input: { name: string; location: string; description: string; bannerImage?: string }) => Promise<void>; deleteMarketAdmin: (marketId: string) => Promise<void>;
-  shops: Shop[]; products: Product[]; categories: Category[];
-  cart: CartItem[]; addToCart: (product: Product, quantity?: number, size?: string, color?: string) => boolean; removeFromCart: (cartItemId: string) => void; updateCartQuantity: (cartItemId: string, delta: number) => void; clearCart: () => void;
-  isCartOpen: boolean; setIsCartOpen: (open: boolean) => void; wishlist: string[]; toggleWishlist: (productId: string) => void; isWishlisted: (productId: string) => boolean;
-  conversations: Conversation[]; activeConversationId: string | null; setActiveConversationId: (id: string | null) => void; sendMessage: (conversationId: string, text: string) => void; startChatWithShop: (shop: Shop, initialProduct?: Product, initialQuestion?: string) => void; isMessagesOpen: boolean; setIsMessagesOpen: (open: boolean) => void;
-  orders: Order[]; createOrder: (deliveryType: 'pickup' | 'delivery', address?: string) => Promise<Order | null>; updateOrderStatus: (orderId: string, status: Order['status']) => void;
-  createProduct: (productData: Partial<Product>) => Promise<boolean>; updateProduct: (productId: string, productData: Partial<Product>) => Promise<boolean>; deleteProduct: (productId: string) => Promise<void>; registerShop: (shopData: Partial<Shop>) => void;
-  updateShopImages: (shopId: string, updates: { avatarFile?: File | null; bannerFile?: File | null; removeAvatar?: boolean; removeBanner?: boolean }) => Promise<boolean>; updateShopDetails: (shopId: string, updates: { phone?: string; address?: string; about?: string; openingHours?: string }) => Promise<boolean>;
-  addShopCategory: (shopId: string, name: string) => Promise<boolean>; updateShopCategory: (shopId: string, categoryId: string, name: string) => Promise<boolean>; deleteShopCategory: (shopId: string, categoryId: string) => Promise<boolean>;
-  toasts: Toast[]; showToast: (message: string, type?: 'success' | 'info' | 'warning' | 'error') => void; removeToast: (id: string) => void; followedShops: string[]; toggleFollowShop: (shopId: string) => void; isFollowingShop: (shopId: string) => boolean;
+interface Toast {
+  id: string;
+  message: string;
+  type?: 'success' | 'info' | 'warning' | 'error';
 }
 
-const isDummyImage = (value: unknown): string => String(value || '').trim().toLowerCase();
-const cleanImageUrl = (value: unknown): string => { const url = String(value || '').trim(); return isDummyImage(url).includes('images.unsplash.com') || isDummyImage(url).includes('images.pexels.com') ? '' : url; };
-const removeUndefined = (value: any): any => Array.isArray(value) ? value.map(removeUndefined) : value && typeof value === 'object' && value.constructor === Object ? Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined).map(([key, entry]) => [key, removeUndefined(entry)])) : value;
-const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> => { let timeoutId: ReturnType<typeof setTimeout> | undefined; try { return await Promise.race([promise, new Promise<T>((_, reject) => { timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs); })]); } finally { if (timeoutId) clearTimeout(timeoutId); } };
-const buildFirebaseFallbackUser = (firebaseUser: FirebaseUser): User => { let cachedShop: Partial<Shop> | undefined; try { const savedShops = localStorage.getItem('claymarket_shops_v2'); if (savedShops) { const shops = JSON.parse(savedShops); if (Array.isArray(shops)) cachedShop = shops.find((shop) => shop?.ownerId === firebaseUser.uid); } } catch {} if (cachedShop?.ownerId) return { id: firebaseUser.uid, name: String(cachedShop.ownerName || firebaseUser.displayName || 'Claymarket User'), email: firebaseUser.email || '', phone: String(cachedShop.phone || firebaseUser.phoneNumber || ''), role: 'seller', avatar: String(cachedShop.avatar || firebaseUser.photoURL || ''), addresses: [], shopId: String(cachedShop.id || ''), shopName: String(cachedShop.name || ''), sellerLocation: { state: String(cachedShop.state || ''), district: String(cachedShop.district || ''), marketId: String(cachedShop.marketId || ''), marketName: String(cachedShop.marketName || '') } }; return { id: firebaseUser.uid, name: firebaseUser.displayName || 'Claymarket User', email: firebaseUser.email || '', phone: firebaseUser.phoneNumber || '', role: 'buyer', avatar: firebaseUser.photoURL || '', addresses: [] }; };
-const idOf = (value: any): string => value && typeof value === 'object' ? String(value._id || '') : String(value || '');
-const nameOf = (value: any, fallback = ''): string => value && typeof value === 'object' ? String(value.name || fallback) : fallback;
-const formatTimestamp = (input: any): string => { const date = input ? new Date(input) : null; if (!date || Number.isNaN(date.getTime())) return 'Just now'; const diffMin = Math.round((Date.now() - date.getTime()) / 60000); if (diffMin <= 0) return 'Just now'; if (diffMin < 60) return `${diffMin}m ago`; const diffHr = Math.round(diffMin / 60); if (diffHr < 24) return `${diffHr}h ago`; const diffDay = Math.round(diffHr / 24); if (diffDay < 7) return `${diffDay}d ago`; return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }); };
-const CONVERSATION_READS_KEY = 'claymarket_conversation_reads';
-const getConversationReads = (): Record<string, number> => { try { const raw = JSON.parse(localStorage.getItem(CONVERSATION_READS_KEY) || '{}'); return raw && typeof raw === 'object' ? raw : {}; } catch { return {}; } };
-const markConversationRead = (conversationId: string) => { try { const reads = getConversationReads(); reads[conversationId] = Date.now(); localStorage.setItem(CONVERSATION_READS_KEY, JSON.stringify(reads)); } catch {} };
-const mapBackendMarket = (raw: any): Market => ({ id: idOf(raw), name: String(raw?.name || 'Unnamed Market'), slug: String(raw?.slug || idOf(raw)), bannerImage: cleanImageUrl(raw?.bannerImage), location: String(raw?.location || ''), description: String(raw?.description || ''), featuredCategories: Array.isArray(raw?.featuredCategories) ? raw.featuredCategories.map(String) : [], bannerText: raw?.bannerText ? String(raw.bannerText) : undefined, established: raw?.established ? String(raw.established) : undefined });
-const mapBackendMessage = (raw: any, conversationId: string): ChatMessage => { const senderRole: 'buyer' | 'seller' = raw?.senderId?.role === 'seller' ? 'seller' : 'buyer'; return { id: idOf(raw) || `msg_${Math.random().toString(36).slice(2, 9)}`, conversationId, senderId: idOf(raw?.senderId), senderRole, sender: senderRole, text: String(raw?.text || ''), timestamp: formatTimestamp(raw?.createdAt) }; };
-const mapBackendConversation = (raw: any, messages: ChatMessage[], shopsList: Shop[], unreadCount: number): Conversation => { const shopId = idOf(raw?.shopId); const shop = shopsList.find(s => s.id === shopId); const buyerId = idOf(raw?.buyerId); const sellerId = idOf(raw?.sellerId); const productAttachment = raw?.productId && typeof raw.productId === 'object' ? { id: idOf(raw.productId), name: String(raw.productId.name || 'Product'), price: Number.isFinite(Number(raw.productId.price)) ? Number(raw.productId.price) : undefined, image: Array.isArray(raw.productId.images) ? cleanImageUrl(raw.productId.images[0]) : '', shopName: shop?.name || nameOf(raw?.shopId, 'Shop') } : undefined; const lastMsg = messages[messages.length - 1]; return { id: idOf(raw), buyerId, buyerName: nameOf(raw?.buyerId, 'Buyer'), buyerAvatar: raw?.buyerId?.avatar || '', sellerId, sellerName: nameOf(raw?.sellerId, shop?.ownerName || 'Seller'), shopId, shopName: shop?.name || nameOf(raw?.shopId, 'Shop'), shopAvatar: shop?.avatar || '', marketName: shop?.marketName || '', productId: raw?.productId ? idOf(raw.productId) : undefined, productAttachment, lastMessage: lastMsg?.text || 'Started a conversation', timestamp: lastMsg ? lastMsg.timestamp : formatTimestamp(raw?.updatedAt || raw?.createdAt), unreadCount, messages }; };
-const mapBackendOrder = (raw: any, shopsList: Shop[]): Order => { const items = Array.isArray(raw?.items) ? raw.items : []; const firstItem = items[0]; const shopId = idOf(firstItem?.shopId); const shop = shopsList.find(s => s.id === shopId); const shopName = shop?.name || nameOf(firstItem?.shopId, 'Shop'); const marketName = shop?.marketName || ''; return { id: idOf(raw), orderNumber: String(raw?.orderNumber || ''), date: formatTimestamp(raw?.createdAt), createdAt: raw?.createdAt ? String(raw.createdAt) : undefined, shopId, shopName, marketName, items: items.map((item: any, idx: number) => ({ id: `${idOf(raw)}_item_${idx}`, product: { id: idOf(item.productId), shopId, shopName, marketId: shop?.marketId || '', marketName, name: String(item.name || nameOf(item.productId, 'Product')), price: Number.isFinite(Number(item.unitPrice)) ? Number(item.unitPrice) : 0, images: [cleanImageUrl(item.image || item.productId?.images?.[0])] }, quantity: Number(item.quantity || 1), selectedSize: item.selectedSize || undefined, selectedColor: item.selectedColor || undefined })), totalAmount: Number(raw?.totalAmount || 0), status: ['pending','confirmed','ready_for_pickup','completed','cancelled'].includes(raw?.status) ? raw.status : 'pending', deliveryType: raw?.deliveryType === 'delivery' ? 'delivery' : 'pickup', address: raw?.address || undefined }; };
+interface AppContextType {
+  // Navigation & Views
+  currentView: AppView;
+  activeNavTab: NavigationTab;
+  navigateTo: (view: AppView, params?: { 
+    market?: Market; 
+    shop?: Shop; 
+    product?: Product; 
+    category?: Category;
+    searchTerm?: string;
+  }) => void;
+  goBack: () => void;
 
-const AppContext = createContext<AppContextType | undefined>(undefined);
-export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const manualAuthInProgressRef = useRef(false);
-  const pathToView = (path: string): AppView => { const cleanPath = path.replace(/\/+$/, '') || '/'; if (cleanPath === '/shops') return 'shops'; if (cleanPath === '/categories') return 'categories'; if (cleanPath === '/about') return 'about'; if (cleanPath === '/faq') return 'faq'; if (cleanPath === '/privacy-policy') return 'privacy'; if (cleanPath === '/terms') return 'terms'; if (/^\/markets\/[^/]+\/[^/]+$/.test(cleanPath)) return 'category-detail'; if (/^\/markets\/[^/]+$/.test(cleanPath)) return 'market-detail'; if (/^\/shops\/[^/]+$/.test(cleanPath)) return 'shop-detail'; if (/^\/products\/[^/]+$/.test(cleanPath)) return 'product-detail'; if (cleanPath === '/') return 'markets'; return 'not-found'; };
-  const [markets, setMarkets] = useState<Market[]>([]); const [categories] = useState<Category[]>(MOCK_CATEGORIES); const [shops, setShops] = useState<Shop[]>([]); const [products, setProducts] = useState<Product[]>([]);
-  const mapFirestoreShop = useCallback((raw: any, id: string): Shop => { const categoryId = Array.isArray(raw.categoryIds) ? String(raw.categoryIds[0] || '') : String(raw.categoryId || ''); const category = categories.find(c => c.id === categoryId); return { id, name: String(raw.name || 'Local Shop'), marketId: String(raw.marketId || ''), marketName: String(raw.marketName || markets.find(m => m.id === raw.marketId)?.name || 'Local Market'), state: String(raw.state || ''), district: String(raw.district || ''), categoryId, categoryName: String(raw.categoryName || category?.name || 'Local Shop'), avatar: cleanImageUrl(raw.profileImage || raw.avatar), banner: cleanImageUrl(raw.coverImage || raw.banner || raw.profileImage), rating: Number(raw.rating || 0), reviewsCount: Number(raw.reviewsCount || 0), verified: Boolean(raw.verified), followersCount: Number(raw.followersCount || 0), about: String(raw.description || raw.about || ''), phone: String(raw.phone || ''), address: String(raw.address || ''), ownerId: String(raw.ownerId || ''), ownerName: String(raw.ownerName || ''), openingHours: raw.hours?.open ? `${raw.hours.open} - ${raw.hours.close || ''}` : String(raw.openingHours || ''), productCategories: Array.isArray(raw.productCategories) ? raw.productCategories.map((entry: any) => ({ id: String(entry?.id || ''), name: String(entry?.name || '') })).filter((entry: { id: string; name: string }) => entry.id && entry.name) : [], onlineOrdering: raw.onlineOrdering === undefined ? undefined : Boolean(raw.onlineOrdering) }; }, [categories, markets]);
-  const mapFirestoreProduct = useCallback((raw: any, id: string): Product => { const images: string[] = Array.isArray(raw.images) ? raw.images.map((image: any) => cleanImageUrl(typeof image === 'string' ? image : image?.url)).filter(Boolean) : []; const categoryId = raw.categoryId || (Array.isArray(raw.categoryIds) ? raw.categoryIds[0] : undefined); const category = categories.find(c => c.id === categoryId); return { id, sellerId: raw.sellerId ? String(raw.sellerId) : undefined, shopId: String(raw.shopId || ''), shopName: String(raw.shopName || 'Local Shop'), marketId: String(raw.marketId || ''), marketName: String(raw.marketName || markets.find(m => m.id === raw.marketId)?.name || 'Local Market'), categoryId: categoryId ? String(categoryId) : undefined, categoryName: String(raw.categoryName || category?.name || ''), shopCategoryId: raw.shopCategoryId ? String(raw.shopCategoryId) : undefined, shopCategoryName: raw.shopCategoryName ? String(raw.shopCategoryName) : undefined, state: raw.state ? String(raw.state) : undefined, district: raw.district ? String(raw.district) : undefined, name: String(raw.name || 'Product'), price: Number.isFinite(Number(raw.price)) ? Number(raw.price) : undefined, originalPrice: Number.isFinite(Number(raw.originalPrice)) ? Number(raw.originalPrice) : undefined, description: raw.description ? String(raw.description) : undefined, images, sizes: Array.isArray(raw.sizes) ? raw.sizes.map(String) : undefined, colors: Array.isArray(raw.colors) ? raw.colors : undefined, inStock: raw.inStock === undefined ? undefined : Boolean(raw.inStock), stockCount: raw.stockCount === undefined ? undefined : Number(raw.stockCount), material: raw.material ? String(raw.material) : undefined, rating: Number(raw.rating || 0), reviewsCount: Number(raw.reviewsCount || 0), status: raw.status === 'hidden' ? 'hidden' : 'published' }; }, [categories, markets]);
-  useEffect(() => { let cancelled = false; const loadRemoteData = async () => { try { if (firebaseConfigured && firebaseDb) { const [shopSnap, productSnap] = await Promise.all([getDocs(query(collection(firebaseDb, 'shops'), limit(MAX_PUBLIC_SHOPS))), getDocs(query(collection(firebaseDb, 'products'), where('status', '==', 'published'), limit(MAX_PUBLIC_PRODUCTS)))]); if (cancelled) return; setShops(shopSnap.docs.map(snapshot => mapFirestoreShop(snapshot.data(), snapshot.id))); setProducts(productSnap.docs.map(snapshot => mapFirestoreProduct(snapshot.data(), snapshot.id))); return; } const result = await apiRequest<any[]>('/shops'); if (cancelled || !Array.isArray(result)) return; setShops(result.map((raw: any) => mapFirestoreShop({ ...raw, marketId: raw.marketId?._id || raw.marketId, categoryIds: Array.isArray(raw.categoryIds) ? raw.categoryIds.map((c: any) => c?._id || c) : [], ownerId: raw.ownerId?._id || raw.ownerId, ownerName: raw.ownerId?.name || '' }, String(raw._id || raw.id)))); } catch {} }; void loadRemoteData(); return () => { cancelled = true; }; }, [mapFirestoreProduct, mapFirestoreShop]);
-  const [currentView, setCurrentView] = useState<AppView>(() => pathToView(window.location.pathname)); const [activeNavTab, setActiveNavTab] = useState<NavigationTab>('markets'); const [viewHistory, setViewHistory] = useState<AppView[]>(['markets']);
-  const [selectedMarket, setSelectedMarket] = useState<Market | null>(null); const [selectedShop, setSelectedShop] = useState<Shop | null>(null); const [selectedProduct, setSelectedProduct] = useState<Product | null>(null); const [selectedCategory, setSelectedCategory] = useState<Category | null>(null); const [searchQuery, setSearchQuery] = useState<string>('');
-  const [shopDetailLoading, setShopDetailLoading] = useState(false); const [shopDetailNotFound, setShopDetailNotFound] = useState(false); const shopDetailRequestRef = useRef(0);
-  const loadShopDetailFromPath = useCallback(async () => { const path = window.location.pathname.replace(/\/+$/, '') || '/'; const parts = path.split('/').filter(Boolean); if (!/^\/shops\/[^/]+$/.test(path)) return; const shopKey = decodeURIComponent(parts[1] || ''); const requestId = ++shopDetailRequestRef.current; setSelectedShop(null); setShopDetailNotFound(false); setShopDetailLoading(true); try { let raw: any; try { raw = await apiRequest<any>(`/shops/${encodeURIComponent(shopKey)}`); } catch (error) { const status = (error as { status?: number })?.status; if (status === 404) raw = null; else throw error; } if (requestId !== shopDetailRequestRef.current) return; if (!raw) { setShopDetailNotFound(true); return; } const mapped = mapFirestoreShop({ ...raw, marketId: raw.marketId?._id || raw.marketId, categoryIds: Array.isArray(raw.categoryIds) ? raw.categoryIds.map((c: any) => c?._id || c) : [], ownerId: raw.ownerId?._id || raw.ownerId, ownerName: raw.ownerId?.name || raw.ownerName || '' }, String(raw._id || raw.id)); setSelectedShop(mapped); } catch (error) { if (requestId === shopDetailRequestRef.current) { console.error('[Claymarket] failed to load shop detail', error); setSelectedShop(null); setShopDetailNotFound(false); } } finally { if (requestId === shopDetailRequestRef.current) setShopDetailLoading(false); } }, [mapFirestoreShop]);
-  useEffect(() => { const syncRoute = () => { const path = window.location.pathname.replace(/\/+$/, '') || '/'; const view = pathToView(path); setCurrentView(view); setActiveNavTab(view === 'shops' || view === 'shop-detail' ? 'shops' : view === 'categories' || view === 'category-detail' ? 'categories' : view === 'about' ? 'about' : 'markets'); const parts = path.split('/').filter(Boolean); const find = <T extends { id: string; slug?: string }>(items: T[], key?: string) => key ? items.find(item => item.id === key || item.slug === key) || null : null; if (view === 'market-detail') setSelectedMarket(find(markets, parts[1]) as Market | null); if (view === 'category-detail') { setSelectedMarket(find(markets, parts[1]) as Market | null); setSelectedCategory(find(categories, parts[2]) as Category | null); } if (view === 'shop-detail') void loadShopDetailFromPath(); if (view === 'product-detail') setSelectedProduct(find(products, parts[1]) as Product | null); if (view !== 'shop-detail') { shopDetailRequestRef.current += 1; setSelectedShop(null); setShopDetailLoading(false); setShopDetailNotFound(false); } }; syncRoute(); window.addEventListener('popstate', syncRoute); return () => window.removeEventListener('popstate', syncRoute); }, [markets, categories, shops, products, loadShopDetailFromPath]);
-  useEffect(() => { try { localStorage.setItem('claymarket_products', JSON.stringify(products)); } catch {} }, [products]); useEffect(() => { try { localStorage.setItem('claymarket_shops_v2', JSON.stringify(shops)); } catch {} }, [shops]);
-  const [currentUser, setCurrentUser] = useState<User>(MOCK_USERS.guest); const [isAuthModalOpen, setIsAuthModalOpen] = useState(false); const [authModalTab, setAuthModalTab] = useState<'login' | 'register' | 'become-seller'>('login'); const [isCartOpen, setIsCartOpen] = useState(false); const [isMessagesOpen, setIsMessagesOpen] = useState(false); const [cart, setCart] = useState<CartItem[]>(() => { try { return JSON.parse(localStorage.getItem('claymarket_cart') || '[]'); } catch { return []; } }); const [wishlist, setWishlist] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem('claymarket_wishlist') || '[]'); } catch { return []; } }); const [followedShops, setFollowedShops] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem('claymarket_followed_shops') || '[]'); } catch { return []; } });
-  useEffect(() => { try { localStorage.setItem('claymarket_cart', JSON.stringify(cart)); } catch {} }, [cart]); useEffect(() => { try { localStorage.setItem('claymarket_wishlist', JSON.stringify(wishlist)); } catch {} }, [wishlist]); useEffect(() => { try { localStorage.setItem('claymarket_followed_shops', JSON.stringify(followedShops)); } catch {} }, [followedShops]);
-  const fetchConversations = React.useCallback(async () => { if (currentUser.role === 'guest') return; try { const list = await apiRequest<any[]>('/conversations'); if (!Array.isArray(list)) return; const withMessages = await Promise.all(list.map(async conv => { let rawMessages: any[] = []; try { rawMessages = await apiRequest<any[]>(`/conversations/${conv._id}/messages`); } catch {} const lastReadAt = getConversationReads()[String(conv._id)] || 0; const unreadCount = rawMessages.filter(m => idOf(m?.senderId) !== currentUser.id && (m?.createdAt ? new Date(m.createdAt).getTime() : 0) > lastReadAt).length; return mapBackendConversation(conv, rawMessages.map(m => mapBackendMessage(m, String(conv._id))), shops, unreadCount); })); setConversations(withMessages.sort((a, b) => a.id === activeConversationId ? -1 : b.id === activeConversationId ? 1 : 0)); } catch {} }, [currentUser.role, currentUser.id, shops, activeConversationId]);
-  const fetchMarkets = React.useCallback(async () => { try { setMarkets((await apiRequest<any[]>('/markets')).map(mapBackendMarket)); } catch {} }, []);
-  const addMarketAdmin = React.useCallback(async (input: { name: string; location: string; description: string; bannerImage?: string }) => { const slug = input.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''); const raw = await apiRequest<any>('/markets', { method: 'POST', body: JSON.stringify({ name: input.name.trim(), slug, location: input.location.trim(), description: input.description.trim(), bannerImage: input.bannerImage?.trim() || undefined, featuredCategories: [] }) }); setMarkets(prev => [...prev, mapBackendMarket(raw)]); }, []);
-  const deleteMarketAdmin = React.useCallback(async (marketId: string) => { await apiRequest<any>(`/markets/${marketId}`, { method: 'DELETE' }); setMarkets(prev => prev.filter(m => m.id !== marketId)); }, []);
-  const fetchOrders = React.useCallback(async () => { if (currentUser.role === 'guest') return; try { const requests = [apiRequest<any[]>('/orders/mine')]; if (currentUser.role === 'seller') requests.push(apiRequest<any[]>('/orders/seller')); const results = await Promise.all(requests.map(p => p.catch(() => [] as any[]))); const byId = new Map<string, any>(); results.flat().forEach(raw => { if (raw?._id) byId.set(String(raw._id), raw); }); const mapped = Array.from(byId.values()).map(raw => mapBackendOrder(raw, shops)); mapped.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')); setOrders(mapped); } catch {} }, [currentUser.role, shops]);
-  useEffect(() => { void fetchMarkets(); }, [fetchMarkets]); useEffect(() => { if (currentUser.role === 'guest') { setConversations([]); setOrders(INITIAL_ORDERS); return; } void fetchConversations(); void fetchOrders(); const a = window.setInterval(() => void fetchConversations(), 6000); const b = window.setInterval(() => void fetchOrders(), 10000); return () => { window.clearInterval(a); window.clearInterval(b); }; }, [currentUser.id, currentUser.role]); useEffect(() => { if (activeConversationId && isMessagesOpen) markConversationRead(activeConversationId); }, [activeConversationId, isMessagesOpen]);
-  const [conversations, setConversations] = useState<Conversation[]>([]); const [activeConversationId, setActiveConversationId] = useState<string | null>(null); const [orders, setOrders] = useState<Order[]>(INITIAL_ORDERS); const [toasts, setToasts] = useState<Toast[]>([]);
-  const showToast = (message: string, type: 'success' | 'info' | 'warning' | 'error' = 'success') => { const id = Date.now().toString(); setToasts(prev => [...prev, { id, message, type }]); setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3200); }; const removeToast = (id: string) => setToasts(prev => prev.filter(t => t.id !== id));
-  const navigateTo = (view: AppView, params?: { market?: Market; shop?: Shop; product?: Product; category?: Category; searchTerm?: string }) => { setViewHistory(prev => [...prev, view]); setCurrentView(view); const slugOrId = (value?: { id: string; slug?: string } | null) => value?.slug || value?.id; const nextPath = view === 'markets' ? '/' : view === 'shops' ? '/shops' : view === 'categories' ? '/categories' : view === 'about' ? '/about' : view === 'faq' ? '/faq' : view === 'privacy' ? '/privacy-policy' : view === 'terms' ? '/terms' : view === 'market-detail' && params?.market ? `/markets/${slugOrId(params.market)}` : view === 'category-detail' && params?.market && params?.category ? `/markets/${slugOrId(params.market)}/${slugOrId(params.category)}` : view === 'shop-detail' && params?.shop ? `/shops/${slugOrId(params.shop)}` : view === 'product-detail' && params?.product ? `/products/${slugOrId(params.product)}` : undefined; if (nextPath && window.location.pathname !== nextPath) window.history.pushState({ view }, '', nextPath); if (params?.market) setSelectedMarket(params.market); if (params?.shop) setSelectedShop(params.shop); if (params?.product) setSelectedProduct(params.product); if (params?.category) setSelectedCategory(params.category); if (params?.searchTerm !== undefined) setSearchQuery(params.searchTerm); if (view === 'markets' || view === 'market-detail') setActiveNavTab('markets'); else if (view === 'shops' || view === 'shop-detail') setActiveNavTab('shops'); else if (view === 'categories' || view === 'category-detail') setActiveNavTab('categories'); else if (view === 'about') setActiveNavTab('about'); window.scrollTo({ top: 0, behavior: 'smooth' }); };
-  const goBack = () => { if (viewHistory.length > 1) { window.history.back(); return; } if (window.location.pathname !== '/') { window.history.pushState({ view: 'markets' }, '', '/'); setCurrentView('markets'); setActiveNavTab('markets'); window.scrollTo({ top: 0, behavior: 'smooth' }); return; } setCurrentView('markets'); };
-  const performSearch = (query: string) => setSearchQuery(query); const normalizedSearchQuery = searchQuery.toLowerCase(); const filteredMarkets = markets.filter(m => !searchQuery || [m.name, m.location, m.description].some(v => v.toLowerCase().includes(normalizedSearchQuery))); const filteredShops = shops.filter(s => { const values = [s.name, s.marketName, s.state, s.district, s.address, s.categoryName, s.about].map(v => String(v || '').toLowerCase()); return !searchQuery || values.some(v => v.includes(normalizedSearchQuery)); }); const filteredProducts = products.filter(p => { const values = [p.name, p.shopName, p.marketName, p.state, p.district, p.categoryName, p.description].map(v => String(v || '').toLowerCase()); return p.status !== 'hidden' && (!searchQuery || values.some(v => v.includes(normalizedSearchQuery))); });
-  const [userAuthInitialized, setUserAuthInitialized] = useState(false);
-  useEffect(() => { if (!firebaseConfigured || !firebaseAuthClient) { setCurrentUser(MOCK_USERS.guest); setUserAuthInitialized(true); return; } let cancelled = false; const mapProfileToUser = (data: any, firebaseUser: FirebaseUser): User => ({ id: firebaseUser.uid, name: String(data?.name || firebaseUser.displayName || 'Claymarket User'), email: String(data?.email || firebaseUser.email || ''), phone: String(data?.phone || firebaseUser.phoneNumber || ''), role: data?.role === 'seller' ? 'seller' : 'buyer', avatar: String(data?.avatar || firebaseUser.photoURL || ''), addresses: Array.isArray(data?.addresses) ? data.addresses : [], shopId: data?.shopId ? String(data.shopId) : undefined, shopName: data?.shopName ? String(data.shopName) : undefined, sellerLocation: data?.sellerLocation ? { state: String(data.sellerLocation.state || ''), district: String(data.sellerLocation.district || ''), marketId: String(data.sellerLocation.marketId || ''), marketName: String(data.sellerLocation.marketName || '') } : undefined }); const restoreSession = async (firebaseUser: FirebaseUser) => { const token = await withTimeout(firebaseUser.getIdToken(), 8000, 'Firebase session initialization timed out. Please check your connection.'); setAuthToken(token); if (!firebaseDb) { if (!cancelled) setCurrentUser(buildFirebaseFallbackUser(firebaseUser)); return; } const profileSnap = await withTimeout(getDoc(doc(firebaseDb, 'users', firebaseUser.uid)), 8000, 'Profile loading timed out. Your Firebase session is still active.'); if (!profileSnap.exists()) { const profile = { name: firebaseUser.displayName || 'Claymarket User', email: firebaseUser.email || '', phone: firebaseUser.phoneNumber || '', role: 'buyer' as const, avatar: firebaseUser.photoURL || '', addresses: [], createdAt: serverTimestamp(), updatedAt: serverTimestamp() }; await withTimeout(setDoc(doc(firebaseDb, 'users', firebaseUser.uid), profile), 8000, 'Profile creation timed out. Your Firebase session is still active.'); if (!cancelled) setCurrentUser(mapProfileToUser(profile, firebaseUser)); return; } if (!cancelled) setCurrentUser(mapProfileToUser(profileSnap.data(), firebaseUser)); }; const unsubscribe = onAuthStateChanged(firebaseAuthClient, async firebaseUser => { if (cancelled || manualAuthInProgressRef.current) return; if (!firebaseUser) { clearAuthToken(); setCurrentUser(MOCK_USERS.guest); setUserAuthInitialized(true); return; } try { await restoreSession(firebaseUser); } catch { if (!cancelled) { setAuthToken(await firebaseUser.getIdToken().catch(() => '')); setCurrentUser(buildFirebaseFallbackUser(firebaseUser)); setUserAuthInitialized(true); } return; } setUserAuthInitialized(true); }); return () => { cancelled = true; unsubscribe(); }; }, []);
-  const firebaseAuthError = (error: unknown) => { const code = String((error as { code?: string })?.code || ''); return ({ 'auth/invalid-credential': 'Invalid email or password.', 'auth/user-not-found': 'No account was found with those credentials.', 'auth/wrong-password': 'Invalid email or password.', 'auth/email-already-in-use': 'An account with this email already exists.', 'auth/weak-password': 'Password is too weak. Please use at least 8 characters.', 'auth/invalid-email': 'Please enter a valid email address.', 'auth/too-many-requests': 'Too many attempts. Please wait and try again.', 'auth/network-request-failed': 'Network error. Please check your internet connection.', 'auth/operation-not-allowed': 'Email/password sign-in is not enabled in Firebase yet.' } as Record<string,string>)[code] || (error instanceof Error ? error.message : 'Authentication failed. Please try again.'); };
-  const profileForUser = async (firebaseUser: FirebaseUser): Promise<User> => { if (!firebaseDb) return buildFirebaseFallbackUser(firebaseUser); const profileSnap = await withTimeout(getDoc(doc(firebaseDb, 'users', firebaseUser.uid)), 8000, 'Profile loading timed out. Please try again.'); if (!profileSnap.exists()) { const profile = { name: firebaseUser.displayName || 'Claymarket User', email: firebaseUser.email || '', phone: firebaseUser.phoneNumber || '', role: 'buyer' as const, avatar: firebaseUser.photoURL || '', addresses: [] }; await withTimeout(setDoc(doc(firebaseDb, 'users', firebaseUser.uid), { ...profile, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }), 8000, 'Profile creation timed out. Please try again.'); return { id: firebaseUser.uid, ...profile }; } const data = profileSnap.data(); return mapProfileToUser(data, firebaseUser); function mapProfileToUser(data: any, fbUser: FirebaseUser): User { return { id: fbUser.uid, name: String(data.name || fbUser.displayName || 'Claymarket User'), email: String(data.email || fbUser.email || ''), phone: String(data.phone || fbUser.phoneNumber || ''), role: data.role === 'seller' ? 'seller' : 'buyer', avatar: String(data.avatar || fbUser.photoURL || ''), addresses: Array.isArray(data.addresses) ? data.addresses : [], shopId: data.shopId ? String(data.shopId) : undefined, shopName: data.shopName ? String(data.shopName) : undefined, sellerLocation: data.sellerLocation ? { state: String(data.sellerLocation.state || ''), district: String(data.sellerLocation.district || ''), marketId: String(data.sellerLocation.marketId || ''), marketName: String(data.sellerLocation.marketName || '') } : undefined }; } };
-  const finishFirebaseLogin = async (email: string, password: string, welcomeMessage = true) => { if (!firebaseConfigured || !firebaseAuthClient) throw new Error('Firebase is not configured. Add the VITE_FIREBASE_* environment variables.'); manualAuthInProgressRef.current = true; try { const credential = await signInWithEmailAndPassword(firebaseAuthClient, email, password); setAuthToken(await withTimeout(credential.user.getIdToken(true), 8000, 'Firebase sign-in completed, but the session token could not be refreshed. Please try again.')); let user: User; try { user = await profileForUser(credential.user); } catch { user = buildFirebaseFallbackUser(credential.user); } setCurrentUser(user); setIsAuthModalOpen(false); if (welcomeMessage) showToast(`Welcome back, ${user.name}!`, 'success'); } finally { manualAuthInProgressRef.current = false; } };
-  const loginUser = async (identifier: string, password: string) => { try { const value = identifier.trim(); if (!value) throw new Error('Please enter your email address.'); if (!password) throw new Error('Please enter your password.'); const email = value.includes('@') ? value : (await apiRequest<{ email: string }>('/auth/resolve-login', { method: 'POST', body: JSON.stringify({ identifier: value }) })).email; await finishFirebaseLogin(email.toLowerCase(), password); } catch (error) { throw new Error(firebaseAuthError(error)); } };
-  const createFirebaseProfile = async (firebaseUser: FirebaseUser, data: Record<string, unknown>) => { if (!firebaseDb) throw new Error('Firestore is not configured.'); await setDoc(doc(firebaseDb, 'users', firebaseUser.uid), { ...data, email: firebaseUser.email || '', createdAt: serverTimestamp(), updatedAt: serverTimestamp() }); };
-  const registerAccount = async (data: { name: string; email: string; password: string; phone?: string }) => { if (!firebaseConfigured || !firebaseAuthClient || !firebaseDb) throw new Error('Firebase is not configured. Add the VITE_FIREBASE_* environment variables.'); let credential: Awaited<ReturnType<typeof createUserWithEmailAndPassword>> | null = null; manualAuthInProgressRef.current = true; try { credential = await createUserWithEmailAndPassword(firebaseAuthClient, data.email.trim().toLowerCase(), data.password); await credential.user.getIdToken(true); await updateProfile(credential.user, { displayName: data.name.trim() }); await createFirebaseProfile(credential.user, { name: data.name.trim(), phone: data.phone?.trim() || '', role: 'buyer', avatar: credential.user.photoURL || '', addresses: [] }); setCurrentUser(await profileForUser(credential.user)); setIsAuthModalOpen(false); showToast(`Welcome to Claymarket, ${data.name.trim()}!`, 'success'); } catch (error) { if (credential?.user) await deleteUser(credential.user).catch(() => {}); throw new Error(firebaseAuthError(error)); } finally { manualAuthInProgressRef.current = false; } };
-  const registerSeller = async (data: { name: string; phone?: string; shop: { name: string; marketId: string; categoryId: string; state: string; district: string; address?: string } }) => { if (!firebaseConfigured || !firebaseAuthClient || !firebaseDb) throw new Error('Firebase is not configured. Add the VITE_FIREBASE_* environment variables.'); const firebaseUser = firebaseAuthClient.currentUser; if (!firebaseUser) throw new Error('Please sign in to your Claymarket account before opening a shop.'); const selectedMarket = markets.find(m => m.id === data.shop.marketId); const selectedCategory = categories.find(c => c.id === data.shop.categoryId); if (!selectedMarket || !selectedCategory) throw new Error('Please select a valid market and category.'); manualAuthInProgressRef.current = true; try { const shopId = `shop_${firebaseUser.uid}`; const shopName = data.shop.name.trim(); if (!shopName || !data.shop.state.trim() || !data.shop.district.trim()) throw new Error('Shop name, state and district are required.'); if (firebaseUser.displayName !== data.name.trim()) await updateProfile(firebaseUser, { displayName: data.name.trim() }); const shopDoc = { ownerId: firebaseUser.uid, ownerName: data.name.trim(), name: shopName, slug: `${shopName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'local-shop'}-${Date.now()}`, marketId: selectedMarket.id, marketName: selectedMarket.name, state: data.shop.state.trim(), district: data.shop.district.trim(), categoryIds: [selectedCategory.id], categoryId: selectedCategory.id, categoryName: selectedCategory.name, profileImage: '', coverImage: '', description: '', phone: data.phone?.trim() || '', address: data.shop.address?.trim() || '', rating: 0, reviewsCount: 0, verified: false, followersCount: 0, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }; const userDoc = { name: data.name.trim(), email: firebaseUser.email || '', phone: data.phone?.trim() || '', role: 'seller', avatar: firebaseUser.photoURL || '', addresses: Array.isArray(currentUser.addresses) ? currentUser.addresses : [], shopId, shopName, sellerLocation: { state: data.shop.state.trim(), district: data.shop.district.trim(), marketId: selectedMarket.id, marketName: selectedMarket.name } }; const batch = writeBatch(firebaseDb); batch.set(doc(firebaseDb, 'users', firebaseUser.uid), { ...userDoc, updatedAt: serverTimestamp() }, { merge: true }); batch.set(doc(firebaseDb, 'shops', shopId), shopDoc); await withTimeout(batch.commit(), 10000, 'Shop creation timed out. Please check your Firebase connection and try again.'); setCurrentUser(await profileForUser(firebaseUser)); setShops(prev => [{ id: shopId, name: shopName, marketId: selectedMarket.id, marketName: selectedMarket.name, state: data.shop.state.trim(), district: data.shop.district.trim(), categoryId: selectedCategory.id, categoryName: selectedCategory.name, avatar: '', banner: '', rating: 0, reviewsCount: 0, verified: false, followersCount: 0, about: '', phone: data.phone?.trim() || '', address: data.shop.address?.trim() || '', ownerId: firebaseUser.uid, ownerName: data.name.trim() }, ...prev.filter(shop => shop.id !== shopId)]); setIsAuthModalOpen(false); showToast('Your shop is now live on Claymarket.', 'success'); } catch (error) { throw new Error(error instanceof Error ? error.message : 'Unable to create your shop. Please try again.'); } finally { manualAuthInProgressRef.current = false; } };
-  const registerShop = (_shopData: Partial<Shop>) => {};
-  const updateShopImages = async (shopId: string, updates: { avatarFile?: File | null; bannerFile?: File | null; removeAvatar?: boolean; removeBanner?: boolean }): Promise<boolean> => { if (!firebaseDb) return false; const payload: any = {}; if (updates.removeAvatar) payload.profileImage = deleteField(); else if (updates.avatarFile) payload.profileImage = await uploadToCloudinary(updates.avatarFile); if (updates.removeBanner) payload.coverImage = deleteField(); else if (updates.bannerFile) payload.coverImage = await uploadToCloudinary(updates.bannerFile); await updateDoc(doc(firebaseDb, 'shops', shopId), payload); setShops(prev => prev.map(s => s.id === shopId ? { ...s, avatar: payload.profileImage?.url || (updates.removeAvatar ? '' : s.avatar), banner: payload.coverImage?.url || (updates.removeBanner ? '' : s.banner) } : s)); setSelectedShop(prev => prev && prev.id === shopId ? { ...prev, avatar: updates.removeAvatar ? '' : prev.avatar, banner: updates.removeBanner ? '' : prev.banner } : prev); return true; };
-  const updateShopDetails = async (shopId: string, updates: { phone?: string; address?: string; about?: string; openingHours?: string }): Promise<boolean> => { if (!firebaseDb) return false; const payload = removeUndefined({ phone: updates.phone, address: updates.address, description: updates.about, openingHours: updates.openingHours, updatedAt: serverTimestamp() }); await updateDoc(doc(firebaseDb, 'shops', shopId), payload); setSelectedShop(prev => prev && prev.id === shopId ? { ...prev, phone: updates.phone ?? prev.phone, address: updates.address ?? prev.address, about: updates.about ?? prev.about, openingHours: updates.openingHours ?? prev.openingHours } : prev); setShops(prev => prev.map(s => s.id === shopId ? { ...s, phone: updates.phone ?? s.phone, address: updates.address ?? s.address, about: updates.about ?? s.about, openingHours: updates.openingHours ?? s.openingHours } : s)); return true; };
-  const addShopCategory = async (shopId: string, name: string): Promise<boolean> => { if (!firebaseDb) return false; const shopRef = doc(firebaseDb, 'shops', shopId); const snap = await getDoc(shopRef); if (!snap.exists()) return false; const current = Array.isArray(snap.data().productCategories) ? snap.data().productCategories : []; const category = { id: `cat_${Date.now()}`, name: name.trim() }; await updateDoc(shopRef, { productCategories: [...current, category], updatedAt: serverTimestamp() }); return true; };
-  const updateShopCategory = async (shopId: string, categoryId: string, name: string): Promise<boolean> => { if (!firebaseDb) return false; const ref = doc(firebaseDb, 'shops', shopId); const snap = await getDoc(ref); if (!snap.exists()) return false; const current = Array.isArray(snap.data().productCategories) ? snap.data().productCategories : []; await updateDoc(ref, { productCategories: current.map((c: any) => c?.id === categoryId ? { ...c, name: name.trim() } : c), updatedAt: serverTimestamp() }); return true; };
-  const deleteShopCategory = async (shopId: string, categoryId: string): Promise<boolean> => { if (!firebaseDb) return false; const ref = doc(firebaseDb, 'shops', shopId); const snap = await getDoc(ref); if (!snap.exists()) return false; const current = Array.isArray(snap.data().productCategories) ? snap.data().productCategories : []; await updateDoc(ref, { productCategories: current.filter((c: any) => c?.id !== categoryId), updatedAt: serverTimestamp() }); return true; };
-  const addToCart = (product: Product, quantity = 1, size?: string, color?: string) => { const id = `${product.id}|${size || ''}|${color || ''}`; setCart(prev => { const existing = prev.find(item => item.id === id); return existing ? prev.map(item => item.id === id ? { ...item, quantity: item.quantity + quantity } : item) : [...prev, { id, product, quantity, selectedSize: size, selectedColor: color }]; }); return true; };
-  const removeFromCart = (cartItemId: string) => setCart(prev => prev.filter(item => item.id !== cartItemId)); const updateCartQuantity = (cartItemId: string, delta: number) => setCart(prev => prev.map(item => item.id === cartItemId ? { ...item, quantity: Math.max(1, item.quantity + delta) } : item)); const clearCart = () => setCart([]); const toggleWishlist = (productId: string) => setWishlist(prev => prev.includes(productId) ? prev.filter(id => id !== productId) : [...prev, productId]); const isWishlisted = (productId: string) => wishlist.includes(productId); const toggleFollowShop = (shopId: string) => setFollowedShops(prev => prev.includes(shopId) ? prev.filter(id => id !== shopId) : [...prev, shopId]); const isFollowingShop = (shopId: string) => followedShops.includes(shopId); const sendMessage = (_conversationId: string, _text: string) => {}; const startChatWithShop = (shop: Shop) => { setIsMessagesOpen(true); const conversation = conversations.find(c => c.shopId === shop.id); setActiveConversationId(conversation?.id || null); };
-  const createOrder = async (): Promise<Order | null> => null; const updateOrderStatus = (_orderId: string, _status: Order['status']) => {};
-  const createProduct = async (): Promise<boolean> => false; const updateProduct = async (): Promise<boolean> => false; const deleteProduct = async (): Promise<void> => {};
-  const updateProfilePicture = async (_file: File): Promise<void> => {};
+  // Selected Entities
+  selectedMarket: Market | null;
+  selectedShop: Shop | null;
+  selectedProduct: Product | null;
+  selectedCategory: Category | null;
 
-  return <AppContext.Provider value={{ currentView, activeNavTab, navigateTo, goBack, selectedMarket, selectedShop, selectedProduct, selectedCategory, searchQuery, setSearchQuery, performSearch, filteredMarkets, filteredShops, filteredProducts, currentUser, loginUser, registerAccount, registerSeller, logoutUser: async () => { if (firebaseAuthClient) await signOut(firebaseAuthClient); setCurrentUser(MOCK_USERS.guest); }, updateProfilePicture, isAuthModalOpen, setIsAuthModalOpen, authModalTab, setAuthModalTab, markets, addMarketAdmin, deleteMarketAdmin, shops, products, categories, cart, addToCart, removeFromCart, updateCartQuantity, clearCart, isCartOpen, setIsCartOpen, wishlist, toggleWishlist, isWishlisted, conversations, activeConversationId, setActiveConversationId, sendMessage, startChatWithShop, isMessagesOpen, setIsMessagesOpen, orders, createOrder, updateOrderStatus, createProduct, updateProduct, deleteProduct, registerShop, updateShopImages, updateShopDetails, addShopCategory, updateShopCategory, deleteShopCategory, toasts, showToast, removeToast, followedShops, toggleFollowShop, isFollowingShop }} />;
+  // Search
+  searchQuery: string;
+  setSearchQuery: (query: string) => void;
+  performSearch: (query: string) => void;
+  filteredMarkets: Market[];
+  filteredShops: Shop[];
+  filteredProducts: Product[];
+
+  // User & Auth
+  currentUser: User;
+  loginUser: (email: string, password: string) => Promise<void>;
+  registerAccount: (data: { name: string; email: string; password: string; phone?: string }) => Promise<void>;
+  registerSeller: (data: { name: string; phone?: string; shop: { name: string; marketId: string; categoryId: string; state: string; district: string; address?: string } }) => Promise<void>;
+  logoutUser: () => Promise<void>;
+  updateProfilePicture: (file: File) => Promise<void>;
+  isAuthModalOpen: boolean;
+  setIsAuthModalOpen: (open: boolean) => void;
+  authModalTab: 'login' | 'register' | 'become-seller';
+  setAuthModalTab: (tab: 'login' | 'register' | 'become-seller') => void;
+
+  // Data Collections
+  markets: Market[];
+  addMarketAdmin: (input: { name: string; location: string; description: string; bannerImage?: string }) => Promise<void>;
+  deleteMarketAdmin: (marketId: string) => Promise<void>;
+  shops: Shop[];
+  products: Product[];
+  categories: Category[];
+
+  // Cart
+  cart: CartItem[];
+  addToCart: (product: Product, quantity?: number, size?: string, color?: string) => boolean;
+  removeFromCart: (cartItemId: string) => void;
+  updateCartQuantity: (cartItemId: string, delta: number) => void;
+  clearCart: () => void;
+  isCartOpen: boolean;
+  setIsCartOpen: (open: boolean) => void;
+
+  // Wishlist
+  wishlist: string[]; // Product IDs
+  toggleWishlist: (productId: string) => void;
+  isWishlisted: (productId: string) => boolean;
+
+  // Messaging
+  conversations: Conversation[];
+  activeConversationId: string | null;
+  setActiveConversationId: (id: string | null) => void;
+  sendMessage: (conversationId: string, text: string) => void;
+  startChatWithShop: (shop: Shop, initialProduct?: Product, initialQuestion?: string) => void;
+  isMessagesOpen: boolean;
+  setIsMessagesOpen: (open: boolean) => void;
+
+  // Orders
+  orders: Order[];
+  createOrder: (deliveryType: 'pickup' | 'delivery', address?: string) => Promise<Order | null>;
+  updateOrderStatus: (orderId: string, status: Order['status']) => void;
+
+  // Seller Actions
+  createProduct: (productData: Partial<Product>) => Promise<boolean>;
+  updateProduct: (productId: string, productData: Partial<Product>) => Promise<boolean>;
+  deleteProduct: (productId: string) => Promise<void>;
+  registerShop: (shopData: Partial<Shop>) => void;
+
+  // Seller: Shop profile management
+  updateShopImages: (shopId: string, updates: { avatarFile?: File | null; bannerFile?: File | null; removeAvatar?: boolean; removeBanner?: boolean }) => Promise<boolean>;
+  updateShopDetails: (shopId: string, updates: { phone?: string; address?: string; about?: string; openingHours?: string }) => Promise<boolean>;
+  addShopCategory: (shopId: string, name: string) => Promise<boolean>;
+  updateShopCategory: (shopId: string, categoryId: string, name: string) => Promise<boolean>;
+  deleteShopCategory: (shopId: string, categoryId: string) => Promise<boolean>;
+
+  // Notifications / Toasts
+  toasts: Toast[];
+  showToast: (message: string, type?: 'success' | 'info' | 'warning' | 'error') => void;
+  removeToast: (id: string) => void;
+
+  // Followers
+  followedShops: string[];
+  toggleFollowShop: (shopId: string) => void;
+  isFollowingShop: (shopId: string) => boolean;
+}
+
+
+const removeUndefined = (value: any): any => {
+  if (Array.isArray(value)) return value.map(removeUndefined);
+  if (value && typeof value === 'object' && value.constructor === Object) {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, entry]) => entry !== undefined)
+        .map(([key, entry]) => [key, removeUndefined(entry)]),
+    );
+  }
+  return value;
 };
 
-export const useApp = () => { const context = useContext(AppContext); if (!context) throw new Error('useApp must be used inside AppProvider'); return context; };
+const withTimeout = async <T,>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string,
+): Promise<T> => {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+};
+
+const buildFirebaseFallbackUser = (firebaseUser: FirebaseUser): User => {
+  let cachedShop: Partial<Shop> | undefined;
+
+  try {
+    const savedShops = localStorage.getItem('claymarket_shops_v2');
+    if (savedShops) {
+      const shops = JSON.parse(savedShops);
+      if (Array.isArray(shops)) {
+        cachedShop = shops.find((shop) => shop?.ownerId === firebaseUser.uid);
+      }
+    }
+  } catch {
+    // Local cache is optional; Firebase remains the source of truth.
+  }
+
+  if (cachedShop?.ownerId) {
+    return {
+      id: firebaseUser.uid,
+      name: String(cachedShop.ownerName || firebaseUser.displayName || 'Claymarket User'),
+      email: firebaseUser.email || '',
+      phone: String(cachedShop.phone || firebaseUser.phoneNumber || ''),
+      role: 'seller',
+      avatar: String(cachedShop.avatar || firebaseUser.photoURL || ''),
+      addresses: [],
+      shopId: String(cachedShop.id || ''),
+      shopName: String(cachedShop.name || ''),
+      sellerLocation: {
+        state: String(cachedShop.state || ''),
+        district: String(cachedShop.district || ''),
+        marketId: String(cachedShop.marketId || ''),
+        marketName: String(cachedShop.marketName || ''),
+      },
+    };
+  }
+
+  return {
+    id: firebaseUser.uid,
+    name: firebaseUser.displayName || 'Claymarket User',
+    email: firebaseUser.email || '',
+    phone: firebaseUser.phoneNumber || '',
+    role: 'buyer',
+    avatar: firebaseUser.photoURL || '',
+    addresses: [],
+  };
+};
+
+// ---------------------------------------------------------------------------
+// Messaging & Orders now sync through the backend (Firestore via the Admin
+// SDK) instead of localStorage, so a seller opening their phone/laptop sees
+// the same conversations and orders a buyer created on a different device.
+// These helpers translate the API's shape into the UI's existing Conversation
+// / ChatMessage / Order types so components do not need to change.
+// ---------------------------------------------------------------------------
+
+const idOf = (value: any): string => (value && typeof value === 'object' ? String(value._id || '') : String(value || ''));
+const nameOf = (value: any, fallback = ''): string => (value && typeof value === 'object' ? String(value.name || fallback) : fallback);
+
+const formatTimestamp = (input: any): string => {
+  const date = input ? new Date(input) : null;
+  if (!date || Number.isNaN(date.getTime())) return 'Just now';
+  const diffMs = Date.now() - date.getTime();
+  const diffMin = Math.round(diffMs / 60000);
+  if (diffMin <= 0) return 'Just now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.round(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.round(diffHr / 24);
+  if (diffDay < 7) return `${diffDay}d ago`;
+  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+};
+
+const CONVERSATION_READS_KEY = 'claymarket_conversation_reads';
+
+const getConversationReads = (): Record<string, number> => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(CONVERSATION_READS_KEY) || '{}');
+    return raw && typeof raw === 'object' ? raw : {};
+  } catch {
+    return {};
+  }
+};
+
+const markConversationRead = (conversationId: string) => {
+  try {
+    const reads = getConversationReads();
+    reads[conversationId] = Date.now();
+    localStorage.setItem(CONVERSATION_READS_KEY, JSON.stringify(reads));
+  } catch {
+    // Best-effort only; unread badges simply won't clear on this device.
+  }
+};
+
+const mapBackendMarket = (raw: any): Market => ({
+  id: idOf(raw),
+  name: String(raw?.name || 'Unnamed Market'),
+  slug: String(raw?.slug || idOf(raw)),
+  bannerImage: String(raw?.bannerImage || 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=800&auto=format&fit=crop&q=80'),
+  location: String(raw?.location || ''),
+  description: String(raw?.description || ''),
+  featuredCategories: Array.isArray(raw?.featuredCategories) ? raw.featuredCategories.map(String) : [],
+  bannerText: raw?.bannerText ? String(raw.bannerText) : undefined,
+  established: raw?.established ? String(raw.established) : undefined,
+});
+
+const mapBackendMessage = (raw: any, conversationId: string): ChatMessage => {
+  const senderRole: 'buyer' | 'seller' = (raw?.senderId?.role === 'seller') ? 'seller' : 'buyer';
+  return {
+    id: idOf(raw) || `msg_${Math.random().toString(36).slice(2, 9)}`,
+    conversationId,
+    senderId: idOf(raw?.senderId),
+    senderRole,
+    sender: senderRole,
+    text: String(raw?.text || ''),
+    timestamp: formatTimestamp(raw?.createdAt),
+  };
+};
+
+const mapBackendConversation = (
+  raw: any,
+  messages: ChatMessage[],
+  shopsList: Shop[],
+  unreadCount: number,
+): Conversation => {
+  const shopId = idOf(raw?.shopId);
+  const shop = shopsList.find(s => s.id === shopId);
+  const buyerId = idOf(raw?.buyerId);
+  const sellerId = idOf(raw?.sellerId);
+  const productAttachment = raw?.productId && typeof raw.productId === 'object'
+    ? {
+        id: idOf(raw.productId),
+        name: String(raw.productId.name || 'Product'),
+        price: Number.isFinite(Number(raw.productId.price)) ? Number(raw.productId.price) : undefined,
+        image: Array.isArray(raw.productId.images) ? String(raw.productId.images[0] || '') : '',
+        shopName: shop?.name || nameOf(raw?.shopId, 'Shop'),
+      }
+    : undefined;
+
+  const lastMsg = messages[messages.length - 1];
+
+  return {
+    id: idOf(raw),
+    buyerId,
+    buyerName: nameOf(raw?.buyerId, 'Buyer'),
+    buyerAvatar: raw?.buyerId?.avatar || '',
+    sellerId,
+    sellerName: nameOf(raw?.sellerId, shop?.ownerName || 'Seller'),
+    shopId,
+    shopName: shop?.name || nameOf(raw?.shopId, 'Shop'),
+    shopAvatar: shop?.avatar || '',
+    marketName: shop?.marketName || '',
+    productId: raw?.productId ? idOf(raw.productId) : undefined,
+    productAttachment,
+    lastMessage: lastMsg?.text || 'Started a conversation',
+    timestamp: lastMsg ? lastMsg.timestamp : formatTimestamp(raw?.updatedAt || raw?.createdAt),
+    unreadCount,
+    messages,
+  };
+};
+
+const mapBackendOrder = (raw: any, shopsList: Shop[]): Order => {
+  const items = Array.isArray(raw?.items) ? raw.items : [];
+  const firstItem = items[0];
+  const shopId = idOf(firstItem?.shopId);
+  const shop = shopsList.find(s => s.id === shopId);
+  const shopName = shop?.name || nameOf(firstItem?.shopId, 'Shop');
+  const marketName = shop?.marketName || '';
+
+  return {
+    id: idOf(raw),
+    orderNumber: String(raw?.orderNumber || ''),
+    date: formatTimestamp(raw?.createdAt),
+    createdAt: raw?.createdAt ? String(raw.createdAt) : undefined,
+    shopId,
+    shopName,
+    marketName,
+    items: items.map((item: any, idx: number) => ({
+      id: `${idOf(raw)}_item_${idx}`,
+      product: {
+        id: idOf(item.productId),
+        shopId,
+        shopName,
+        marketId: shop?.marketId || '',
+        marketName,
+        name: String(item.name || nameOf(item.productId, 'Product')),
+        price: Number.isFinite(Number(item.unitPrice)) ? Number(item.unitPrice) : 0,
+        images: [String(item.image || (item.productId?.images?.[0]) || '')],
+      },
+      quantity: Number(item.quantity || 1),
+      selectedSize: item.selectedSize || undefined,
+      selectedColor: item.selectedColor || undefined,
+    })),
+    totalAmount: Number(raw?.totalAmount || 0),
+    status: (['pending', 'confirmed', 'ready_for_pickup', 'completed', 'cancelled'].includes(raw?.status) ? raw.status : 'pending'),
+    deliveryType: raw?.deliveryType === 'delivery' ? 'delivery' : 'pickup',
+    address: raw?.address || undefined,
+  };
+};
+
+const AppContext = createContext<AppContextType | undefined>(undefined);
+
+export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const manualAuthInProgressRef = useRef(false);
+
+  // Navigation State
+  const pathToView = (path: string): AppView => {
+    const cleanPath = path.replace(/\/+$/, '') || '/';
+    if (cleanPath === '/shops') return 'shops';
+    if (cleanPath === '/categories') return 'categories';
+    if (cleanPath === '/about') return 'about';
+    if (cleanPath === '/faq') return 'faq';
+    if (cleanPath === '/privacy-policy') return 'privacy';
+    if (cleanPath === '/terms') return 'terms';
+    if (/^\/markets\/[^/]+\/[^/]+$/.test(cleanPath)) return 'category-detail';
+    if (/^\/markets\/[^/]+$/.test(cleanPath)) return 'market-detail';
+    if (/^\/shops\/[^/]+$/.test(cleanPath)) return 'shop-detail';
+    if (/^\/products\/[^/]+$/.test(cleanPath)) return 'product-detail';
+    if (cleanPath === '/') return 'markets';
+    return 'not-found';
+  };
+
+  // Core marketplace data intentionally starts empty. Firestore/backend is the
+  // source of truth; never hydrate shops/products from browser-local cache.
+  const [markets, setMarkets] = useState<Market[]>([]);
+  const [categories] = useState<Category[]>(MOCK_CATEGORIES);
+  const [shops, setShops] = useState<Shop[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+
+  // Merge real Firebase shops/products into the existing UI collections.
+  useEffect(() => {
+    let cancelled = false;
+
+    const mapFirestoreShop = (raw: any, id: string): Shop => {
+      const categoryId = Array.isArray(raw.categoryIds) ? String(raw.categoryIds[0] || '') : String(raw.categoryId || '');
+      const category = categories.find(c => c.id === categoryId);
+      return {
+        id,
+        name: String(raw.name || 'Local Shop'),
+        marketId: String(raw.marketId || ''),
+        marketName: String(raw.marketName || markets.find(m => m.id === raw.marketId)?.name || 'Local Market'),
+        state: String(raw.state || ''),
+        district: String(raw.district || ''),
+        categoryId,
+        categoryName: String(raw.categoryName || category?.name || 'Local Shop'),
+        avatar: String(raw.profileImage || raw.avatar || 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=500&auto=format&fit=crop&q=80'),
+        banner: String(raw.coverImage || raw.banner || raw.profileImage || 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1000&auto=format&fit=crop&q=80'),
+        rating: Number(raw.rating || 0),
+        reviewsCount: Number(raw.reviewsCount || 0),
+        verified: Boolean(raw.verified),
+        followersCount: Number(raw.followersCount || 0),
+        about: String(raw.description || raw.about || ''),
+        phone: String(raw.phone || ''),
+        address: String(raw.address || ''),
+        ownerId: String(raw.ownerId || ''),
+        ownerName: String(raw.ownerName || ''),
+        openingHours: raw.hours?.open ? `${raw.hours.open} - ${raw.hours.close || ''}` : String(raw.openingHours || ''),
+        productCategories: Array.isArray(raw.productCategories)
+          ? raw.productCategories.map((entry: any) => ({ id: String(entry?.id || ''), name: String(entry?.name || '') })).filter((entry: { id: string; name: string }) => entry.id && entry.name)
+          : [],
+      };
+    };
+
+    const mapFirestoreProduct = (raw: any, id: string): Product => {
+      const images: string[] = Array.isArray(raw.images)
+        ? raw.images.map((image: any) => typeof image === 'string' ? image : String(image?.url || '')).filter(Boolean)
+        : [];
+      const categoryId = raw.categoryId || (Array.isArray(raw.categoryIds) ? raw.categoryIds[0] : undefined);
+      const category = categories.find(c => c.id === categoryId);
+      return {
+        id,
+        sellerId: raw.sellerId ? String(raw.sellerId) : undefined,
+        shopId: String(raw.shopId || ''),
+        shopName: String(raw.shopName || shops.find(s => s.id === raw.shopId)?.name || 'Local Shop'),
+        marketId: String(raw.marketId || ''),
+        marketName: String(raw.marketName || markets.find(m => m.id === raw.marketId)?.name || 'Local Market'),
+        categoryId: categoryId ? String(categoryId) : undefined,
+        categoryName: String(raw.categoryName || category?.name || ''),
+        shopCategoryId: raw.shopCategoryId ? String(raw.shopCategoryId) : undefined,
+        shopCategoryName: raw.shopCategoryName ? String(raw.shopCategoryName) : undefined,
+        state: raw.state ? String(raw.state) : undefined,
+        district: raw.district ? String(raw.district) : undefined,
+        name: String(raw.name || 'Product'),
+        price: Number.isFinite(Number(raw.price)) ? Number(raw.price) : undefined,
+        originalPrice: Number.isFinite(Number(raw.originalPrice)) ? Number(raw.originalPrice) : undefined,
+        description: raw.description ? String(raw.description) : undefined,
+        images,
+        sizes: Array.isArray(raw.sizes) ? raw.sizes.map(String) : undefined,
+        colors: Array.isArray(raw.colors) ? raw.colors : undefined,
+        inStock: raw.inStock === undefined ? undefined : Boolean(raw.inStock),
+        stockCount: raw.stockCount === undefined ? undefined : Number(raw.stockCount),
+        material: raw.material ? String(raw.material) : undefined,
+        rating: Number(raw.rating || 0),
+        reviewsCount: Number(raw.reviewsCount || 0),
+        status: raw.status === 'hidden' ? 'hidden' : 'published',
+      };
+    };
+
+    const loadRemoteData = async () => {
+      try {
+        if (firebaseConfigured && firebaseDb) {
+          const [shopSnap, productSnap] = await Promise.all([
+            getDocs(collection(firebaseDb, 'shops')),
+            getDocs(query(collection(firebaseDb, 'products'), where('status', '==', 'published'))),
+          ]);
+          if (cancelled) return;
+          const remoteShops = shopSnap.docs.map(snapshot => mapFirestoreShop(snapshot.data(), snapshot.id));
+          const remoteProducts = productSnap.docs.map(snapshot => mapFirestoreProduct(snapshot.data(), snapshot.id));
+          setShops(remoteShops);
+          setProducts(remoteProducts);
+          return;
+        }
+
+        const result = await apiRequest<any[]>('/shops');
+        if (cancelled || !Array.isArray(result)) return;
+        const remote = result.map((raw: any): Shop => mapFirestoreShop({
+          ...raw,
+          marketId: raw.marketId?._id || raw.marketId,
+          categoryIds: Array.isArray(raw.categoryIds) ? raw.categoryIds.map((c: any) => c?._id || c) : [],
+          ownerId: raw.ownerId?._id || raw.ownerId,
+          ownerName: raw.ownerId?.name || '',
+        }, String(raw._id || raw.id)));
+        setShops(remote);
+      } catch {
+        // Leave marketplace collections empty on initial failure; a later fetch can recover.
+      }
+    };
+
+    void loadRemoteData();
+    return () => { cancelled = true; };
+  }, [markets, categories]);
+
+  const [currentView, setCurrentView] = useState<AppView>(() => pathToView(window.location.pathname));
+  const [activeNavTab, setActiveNavTab] = useState<NavigationTab>('markets');
+  const [viewHistory, setViewHistory] = useState<AppView[]>(['markets']);
+
+  useEffect(() => {
+    const syncRoute = () => {
+      const path = window.location.pathname.replace(/\/+$/, '') || '/';
+      const view = pathToView(path);
+      setCurrentView(view);
+      setActiveNavTab(view === 'shops' || view === 'shop-detail' ? 'shops' : view === 'categories' || view === 'category-detail' ? 'categories' : view === 'about' ? 'about' : 'markets');
+      const parts = path.split('/').filter(Boolean);
+      const find = <T extends { id: string; slug?: string }>(items: T[], key?: string) => key ? items.find(item => item.id === key || item.slug === key) || null : null;
+      if (view === 'market-detail') setSelectedMarket(find(markets, parts[1]) as Market | null);
+      if (view === 'category-detail') {
+        setSelectedMarket(find(markets, parts[1]) as Market | null);
+        setSelectedCategory(find(categories, parts[2]) as Category | null);
+      }
+      if (view === 'shop-detail') setSelectedShop(find(shops, parts[1]) as Shop | null);
+      if (view === 'product-detail') setSelectedProduct(find(products, parts[1]) as Product | null);
+    };
+    syncRoute();
+    window.addEventListener('popstate', syncRoute);
+    return () => window.removeEventListener('popstate', syncRoute);
+  }, [markets, categories, shops, products]);
+
+  const [selectedMarket, setSelectedMarket] = useState<Market | null>(null);
+  const [selectedShop, setSelectedShop] = useState<Shop | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
+  const [searchQuery, setSearchQuery] = useState<string>('');
+
+  useEffect(() => {
+    try { localStorage.setItem('claymarket_products', JSON.stringify(products)); } catch { /* Ignore quota errors */ }
+  }, [products]);
+
+  useEffect(() => {
+    try { localStorage.setItem('claymarket_shops_v2', JSON.stringify(shops)); } catch { /* Ignore quota errors */ }
+  }, [shops]);
+
+  const [currentUser, setCurrentUser] = useState<User>(MOCK_USERS.guest);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [authModalTab, setAuthModalTab] = useState<'login' | 'register' | 'become-seller'>('login');
+  const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
+  const [isMessagesOpen, setIsMessagesOpen] = useState<boolean>(false);
+  const [cart, setCart] = useState<CartItem[]>(() => {
+    try { return JSON.parse(localStorage.getItem('claymarket_cart') || '[]'); } catch { return []; }
+  });
+  const [wishlist, setWishlist] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('claymarket_wishlist') || '[]'); } catch { return []; }
+  });
+  const [followedShops, setFollowedShops] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('claymarket_followed_shops') || '[]'); } catch { return []; }
+  });
+  useEffect(() => { try { localStorage.setItem('claymarket_cart', JSON.stringify(cart)); } catch {} }, [cart]);
+  useEffect(() => { try { localStorage.setItem('claymarket_wishlist', JSON.stringify(wishlist)); } catch {} }, [wishlist]);
+  useEffect(() => { try { localStorage.setItem('claymarket_followed_shops', JSON.stringify(followedShops)); } catch {} }, [followedShops]);
+
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [orders, setOrders] = useState<Order[]>(INITIAL_ORDERS);
+
+  const fetchConversations = React.useCallback(async () => {
+    if (currentUser.role === 'guest') return;
+    try {
+      const list = await apiRequest<any[]>('/conversations');
+      if (!Array.isArray(list)) return;
+      const withMessages = await Promise.all(list.map(async (conv) => {
+        let rawMessages: any[] = [];
+        try { rawMessages = await apiRequest<any[]>(`/conversations/${conv._id}/messages`); } catch { rawMessages = []; }
+        const lastReadAt = getConversationReads()[String(conv._id)] || 0;
+        const unreadCount = rawMessages.filter((m) => idOf(m?.senderId) !== currentUser.id && (m?.createdAt ? new Date(m.createdAt).getTime() : 0) > lastReadAt).length;
+        const messages = rawMessages.map((m) => mapBackendMessage(m, String(conv._id)));
+        return mapBackendConversation(conv, messages, shops, unreadCount);
+      }));
+      withMessages.sort((a, b) => (a.id === activeConversationId ? -1 : b.id === activeConversationId ? 1 : 0));
+      setConversations(withMessages);
+    } catch {
+      // Keep the last successfully loaded conversation list.
+    }
+  }, [currentUser.role, currentUser.id, shops, activeConversationId]);
+
+  const fetchMarkets = React.useCallback(async () => {
+    try { setMarkets((await apiRequest<any[]>('/markets')).map(mapBackendMarket)); } catch { /* Keep last successful state. */ }
+  }, []);
+
+  const addMarketAdmin = React.useCallback(async (input: { name: string; location: string; description: string; bannerImage?: string }) => {
+    const slug = input.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    const raw = await apiRequest<any>('/markets', { method: 'POST', body: JSON.stringify({ name: input.name.trim(), slug, location: input.location.trim(), description: input.description.trim(), bannerImage: input.bannerImage?.trim() || undefined, featuredCategories: [] }) });
+    setMarkets(prev => [...prev, mapBackendMarket(raw)]);
+  }, []);
+
+  const deleteMarketAdmin = React.useCallback(async (marketId: string) => {
+    await apiRequest<any>(`/markets/${marketId}`, { method: 'DELETE' });
+    setMarkets(prev => prev.filter(m => m.id !== marketId));
+  }, []);
+
+  const fetchOrders = React.useCallback(async () => {
+    if (currentUser.role === 'guest') return;
+    try {
+      const requests = [apiRequest<any[]>('/orders/mine')];
+      if (currentUser.role === 'seller') requests.push(apiRequest<any[]>('/orders/seller'));
+      const results = await Promise.all(requests.map(p => p.catch(() => [] as any[])));
+      const byId = new Map<string, any>();
+      results.flat().forEach((raw: any) => { if (raw?._id) byId.set(String(raw._id), raw); });
+      const mapped = Array.from(byId.values()).map(raw => mapBackendOrder(raw, shops));
+      mapped.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+      setOrders(mapped);
+    } catch { /* Keep previous data. */ }
+  }, [currentUser.role, shops]);
+
+  useEffect(() => { void fetchMarkets(); }, [fetchMarkets]);
+
+  useEffect(() => {
+    if (currentUser.role === 'guest') { setConversations([]); setOrders(INITIAL_ORDERS); return; }
+    void fetchConversations();
+    void fetchOrders();
+    const conversationsInterval = window.setInterval(() => { void fetchConversations(); }, 6000);
+    const ordersInterval = window.setInterval(() => { void fetchOrders(); }, 10000);
+    return () => { window.clearInterval(conversationsInterval); window.clearInterval(ordersInterval); };
+  }, [currentUser.id, currentUser.role]);
+
+  useEffect(() => { if (activeConversationId && isMessagesOpen) markConversationRead(activeConversationId); }, [activeConversationId, isMessagesOpen]);
+
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const showToast = (message: string, type: 'success' | 'info' | 'warning' | 'error' = 'success') => {
+    const id = Date.now().toString();
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3200);
+  };
+  const removeToast = (id: string) => setToasts(prev => prev.filter(t => t.id !== id));
+
+  const navigateTo = (view: AppView, params?: { market?: Market; shop?: Shop; product?: Product; category?: Category; searchTerm?: string }) => {
+    setViewHistory(prev => [...prev, view]);
+    setCurrentView(view);
+    const slugOrId = (value?: { id: string; slug?: string } | null) => value?.slug || value?.id;
+    const nextPath = view === 'markets' ? '/' : view === 'shops' ? '/shops' : view === 'categories' ? '/categories' : view === 'about' ? '/about' : view === 'faq' ? '/faq' : view === 'privacy' ? '/privacy-policy' : view === 'terms' ? '/terms' : view === 'market-detail' && params?.market ? `/markets/${slugOrId(params.market)}` : view === 'category-detail' && params?.market && params?.category ? `/markets/${slugOrId(params.market)}/${slugOrId(params.category)}` : view === 'shop-detail' && params?.shop ? `/shops/${slugOrId(params.shop)}` : view === 'product-detail' && params?.product ? `/products/${slugOrId(params.product)}` : undefined;
+    if (nextPath && window.location.pathname !== nextPath) window.history.pushState({ view }, '', nextPath);
+    if (params?.market) setSelectedMarket(params.market);
+    if (params?.shop) setSelectedShop(params.shop);
+    if (params?.product) setSelectedProduct(params.product);
+    if (params?.category) setSelectedCategory(params.category);
+    if (params?.searchTerm !== undefined) setSearchQuery(params.searchTerm);
+    if (view === 'markets' || view === 'market-detail') setActiveNavTab('markets');
+    else if (view === 'shops' || view === 'shop-detail') setActiveNavTab('shops');
+    else if (view === 'categories' || view === 'category-detail') setActiveNavTab('categories');
+    else if (view === 'about') setActiveNavTab('about');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const goBack = () => {
+    if (viewHistory.length > 1) { window.history.back(); return; }
+    if (window.location.pathname !== '/') { window.history.pushState({ view: 'markets' }, '', '/'); setCurrentView('markets'); setActiveNavTab('markets'); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+    setCurrentView('markets');
+  };
+
+  const performSearch = (query: string) => setSearchQuery(query);
+  const normalizedSearchQuery = searchQuery.toLowerCase();
+  const filteredMarkets = markets.filter(m => !searchQuery || m.name.toLowerCase().includes(normalizedSearchQuery) || m.location.toLowerCase().includes(normalizedSearchQuery) || m.description.toLowerCase().includes(normalizedSearchQuery));
+  const filteredShops = shops.filter(s => {
+    const values = [s.name, s.marketName, s.state, s.district, s.address, s.categoryName, s.about].map(v => String(v || '').toLowerCase());
+    return !searchQuery || values.some(v => v.includes(normalizedSearchQuery));
+  });
+  const filteredProducts = products.filter(p => {
+    const values = [p.name, p.shopName, p.marketName, p.state, p.district, p.categoryName, p.description].map(v => String(v || '').toLowerCase());
+    return p.status !== 'hidden' && (!searchQuery || values.some(v => v.includes(normalizedSearchQuery)));
+  });
+
+  useEffect(() => {
+    if (!firebaseConfigured || !firebaseAuthClient) { setCurrentUser(MOCK_USERS.guest); return; }
+    let cancelled = false;
+    const mapProfileToUser = (data: any, firebaseUser: FirebaseUser): User => ({
+      id: firebaseUser.uid,
+      name: String(data?.name || firebaseUser.displayName || 'Claymarket User'),
+      email: String(data?.email || firebaseUser.email || ''),
+      phone: String(data?.phone || firebaseUser.phoneNumber || ''),
+      role: data?.role === 'seller' ? 'seller' : 'buyer',
+      avatar: String(data?.avatar || firebaseUser.photoURL || ''),
+      addresses: Array.isArray(data?.addresses) ? data.addresses : [],
+      shopId: data?.shopId ? String(data.shopId) : undefined,
+      shopName: data?.shopName ? String(data.shopName) : undefined,
+      sellerLocation: data?.sellerLocation ? { state: String(data.sellerLocation.state || ''), district: String(data.sellerLocation.district || ''), marketId: String(data.sellerLocation.marketId || ''), marketName: String(data.sellerLocation.marketName || '') } : undefined,
+    });
+    const restoreSession = async (firebaseUser: FirebaseUser) => {
+      const token = await withTimeout(firebaseUser.getIdToken(), 8000, 'Firebase session initialization timed out. Please check your connection.');
+      setAuthToken(token);
+      if (!firebaseDb) { if (!cancelled) setCurrentUser(buildFirebaseFallbackUser(firebaseUser)); return; }
+      const profileRef = doc(firebaseDb, 'users', firebaseUser.uid);
+      const profileSnap = await withTimeout(getDoc(profileRef), 8000, 'Profile loading timed out. Your Firebase session is still active.');
+      if (!profileSnap.exists()) {
+        const profile = { name: firebaseUser.displayName || 'Claymarket User', email: firebaseUser.email || '', phone: firebaseUser.phoneNumber || '', role: 'buyer' as const, avatar: firebaseUser.photoURL || '', addresses: [], createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
+        await withTimeout(setDoc(profileRef, profile), 8000, 'Profile creation timed out. Your Firebase session is still active.');
+        if (!cancelled) setCurrentUser(mapProfileToUser(profile, firebaseUser));
+        return;
+      }
+      if (!cancelled) setCurrentUser(mapProfileToUser(profileSnap.data(), firebaseUser));
+    };
+    const unsubscribe = onAuthStateChanged(firebaseAuthClient, async (firebaseUser) => {
+      if (cancelled || manualAuthInProgressRef.current) return;
+      if (!firebaseUser) { clearAuthToken(); setCurrentUser(MOCK_USERS.guest); return; }
+      try { await restoreSession(firebaseUser); }
+      catch (error) {
+        if (!cancelled) { setAuthToken(await firebaseUser.getIdToken().catch(() => '')); setCurrentUser(buildFirebaseFallbackUser(firebaseUser)); }
+        if (import.meta.env.DEV) console.warn('Claymarket profile/session restoration warning:', error);
+      }
+    });
+    return () => { cancelled = true; unsubscribe(); };
+  }, []);
+
+  const firebaseAuthError = (error: unknown) => {
+    const code = String((error as { code?: string })?.code || '');
+    const messages: Record<string, string> = {
+      'auth/invalid-credential': 'Invalid email or password.', 'auth/user-not-found': 'No account was found with those credentials.', 'auth/wrong-password': 'Invalid email or password.', 'auth/email-already-in-use': 'An account with this email already exists.', 'auth/weak-password': 'Password is too weak. Please use at least 8 characters.', 'auth/invalid-email': 'Please enter a valid email address.', 'auth/too-many-requests': 'Too many attempts. Please wait and try again.', 'auth/network-request-failed': 'Network error. Please check your internet connection.', 'auth/operation-not-allowed': 'Email/password sign-in is not enabled in Firebase yet.', 'auth/api-key-not-valid.-please-pass-a-valid-api-key.': 'Firebase configuration is invalid. Check the web app API key in your environment variables.', 'auth/invalid-api-key': 'Firebase configuration is invalid. Check the web app API key in your environment variables.',
+    };
+    return messages[code] || (error instanceof Error ? error.message : 'Authentication failed. Please try again.');
+  };
+
+  const profileForUser = async (firebaseUser: FirebaseUser): Promise<User> => {
+    if (!firebaseDb) return buildFirebaseFallbackUser(firebaseUser);
+    const profileSnap = await withTimeout(getDoc(doc(firebaseDb, 'users', firebaseUser.uid)), 8000, 'Profile loading timed out. Please try again.');
+    if (!profileSnap.exists()) {
+      const profile = { name: firebaseUser.displayName || 'Claymarket User', email: firebaseUser.email || '', phone: firebaseUser.phoneNumber || '', role: 'buyer' as const, avatar: firebaseUser.photoURL || '', addresses: [], createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
+      await withTimeout(setDoc(doc(firebaseDb, 'users', firebaseUser.uid), profile), 8000, 'Profile creation timed out. Please try again.');
+      return { id: firebaseUser.uid, name: profile.name, email: profile.email, phone: profile.phone, role: profile.role, avatar: profile.avatar, addresses: profile.addresses };
+    }
+    const data = profileSnap.data();
+    return { id: firebaseUser.uid, name: String(data.name || firebaseUser.displayName || 'Claymarket User'), email: String(data.email || firebaseUser.email || ''), phone: String(data.phone || ''), role: data.role === 'seller' ? 'seller' : 'buyer', avatar: String(data.avatar || firebaseUser.photoURL || ''), addresses: Array.isArray(data.addresses) ? data.addresses : [], shopId: data.shopId ? String(data.shopId) : undefined, shopName: data.shopName ? String(data.shopName) : undefined, sellerLocation: data.sellerLocation ? { state: String(data.sellerLocation.state || ''), district: String(data.sellerLocation.district || ''), marketId: String(data.sellerLocation.marketId || ''), marketName: String(data.sellerLocation.marketName || '') } : undefined };
+  };
+
+  const finishFirebaseLogin = async (email: string, password: string, welcomeMessage = true) => {
+    if (!firebaseConfigured || !firebaseAuthClient) throw new Error('Firebase is not configured. Add the VITE_FIREBASE_* environment variables.');
+    manualAuthInProgressRef.current = true;
+    try {
+      const credential = await signInWithEmailAndPassword(firebaseAuthClient, email, password);
+      setAuthToken(await withTimeout(credential.user.getIdToken(true), 8000, 'Firebase sign-in completed, but the session token could not be refreshed. Please try again.'));
+      let user: User; let profileSyncWarning = false;
+      try { user = await profileForUser(credential.user); } catch (error) { user = buildFirebaseFallbackUser(credential.user); profileSyncWarning = true; if (import.meta.env.DEV) console.warn('Claymarket profile sync warning after successful sign-in:', error); }
+      setCurrentUser(user); setIsAuthModalOpen(false);
+      if (welcomeMessage) showToast(profileSyncWarning ? 'Signed in successfully. Profile sync will retry later.' : `Welcome back, ${user.name}!`, profileSyncWarning ? 'warning' : 'success');
+      return user;
+    } finally { manualAuthInProgressRef.current = false; }
+  };
+
+  const loginUser = async (identifier: string, password: string) => {
+    try {
+      const value = identifier.trim(); if (!value) throw new Error('Please enter your email address.'); if (!password) throw new Error('Please enter your password.');
+      let email = value;
+      if (!value.includes('@')) email = (await apiRequest<{ email: string }>('/auth/resolve-login', { method: 'POST', body: JSON.stringify({ identifier: value }) })).email;
+      await finishFirebaseLogin(email.toLowerCase(), password);
+    } catch (error) { throw new Error(firebaseAuthError(error)); }
+  };
+
+  const createFirebaseProfile = async (firebaseUser: FirebaseUser, data: Record<string, unknown>) => {
+    if (!firebaseDb) throw new Error('Firestore is not configured.');
+    await setDoc(doc(firebaseDb, 'users', firebaseUser.uid), { ...data, email: firebaseUser.email || '', createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+  };
+
+  const registerAccount = async (data: { name: string; email: string; password: string; phone?: string }) => {
+    if (!firebaseConfigured || !firebaseAuthClient || !firebaseDb) throw new Error('Firebase is not configured. Add the VITE_FIREBASE_* environment variables.');
+    let credential: Awaited<ReturnType<typeof createUserWithEmailAndPassword>> | null = null;
+    manualAuthInProgressRef.current = true;
+    try {
+      credential = await createUserWithEmailAndPassword(firebaseAuthClient, data.email.trim().toLowerCase(), data.password);
+      await credential.user.getIdToken(true); await updateProfile(credential.user, { displayName: data.name.trim() });
+      await createFirebaseProfile(credential.user, { name: data.name.trim(), phone: data.phone?.trim() || '', role: 'buyer', avatar: credential.user.photoURL || '', addresses: [] });
+      const user = await profileForUser(credential.user); setCurrentUser(user); setIsAuthModalOpen(false); showToast(`Welcome to Claymarket, ${data.name.trim()}!`, 'success');
+    } catch (error) { if (credential?.user) await deleteUser(credential.user).catch(() => {}); throw new Error(firebaseAuthError(error)); }
+    finally { manualAuthInProgressRef.current = false; }
+  };
+
+  const registerSeller = async (data: { name: string; phone?: string; shop: { name: string; marketId: string; categoryId: string; state: string; district: string; address?: string } }) => {
+    if (!firebaseConfigured || !firebaseAuthClient || !firebaseDb) throw new Error('Firebase is not configured. Add the VITE_FIREBASE_* environment variables.');
+    const firebaseUser = firebaseAuthClient.currentUser; if (!firebaseUser) throw new Error('Please sign in to your Claymarket account before opening a shop.');
+    const selectedMarket = markets.find(m => m.id === data.shop.marketId); const selectedCategory = categories.find(c => c.id === data.shop.categoryId);
+    if (!selectedMarket) throw new Error('Please select a valid market.'); if (!selectedCategory) throw new Error('Please select a valid category.');
+    manualAuthInProgressRef.current = true;
+    try {
+      const shopId = `shop_${firebaseUser.uid}`; const shopName = data.shop.name.trim();
+      if (!shopName) throw new Error('Please enter a shop name.'); if (!data.shop.state.trim()) throw new Error('Please enter your state.'); if (!data.shop.district.trim()) throw new Error('Please enter your district.');
+      if (firebaseUser.displayName !== data.name.trim()) await updateProfile(firebaseUser, { displayName: data.name.trim() });
+      const shopDoc = { ownerId: firebaseUser.uid, ownerName: data.name.trim(), name: shopName, slug: `${shopName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'local-shop'}-${Date.now()}`, marketId: selectedMarket.id, marketName: selectedMarket.name, state: data.shop.state.trim(), district: data.shop.district.trim(), categoryIds: [selectedCategory.id], categoryId: selectedCategory.id, categoryName: selectedCategory.name, profileImage: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=500&auto=format&fit=crop&q=80', coverImage: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1000&auto=format&fit=crop&q=80', description: '', phone: data.phone?.trim() || '', address: data.shop.address?.trim() || '', rating: 0, reviewsCount: 0, verified: false, followersCount: 0, createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
+      const userDoc = { name: data.name.trim(), email: firebaseUser.email || '', phone: data.phone?.trim() || '', role: 'seller', avatar: firebaseUser.photoURL || '', addresses: Array.isArray(currentUser.addresses) ? currentUser.addresses : [], shopId, shopName, sellerLocation: { state: data.shop.state.trim(), district: data.shop.district.trim(), marketId: selectedMarket.id, marketName: selectedMarket.name } };
+      const batch = writeBatch(firebaseDb); batch.set(doc(firebaseDb, 'users', firebaseUser.uid), { ...userDoc, updatedAt: serverTimestamp() }, { merge: true }); batch.set(doc(firebaseDb, 'shops', shopId), shopDoc); await withTimeout(batch.commit(), 10000, 'Shop creation timed out. Please check your Firebase connection and try again.');
+      setAuthToken(await withTimeout(firebaseUser.getIdToken(true), 8000, 'Shop created, but the session token could not be refreshed. Please refresh and try again.'));
+      const user = await profileForUser(firebaseUser); setCurrentUser(user);
+      const newShop: Shop = { id: shopId, name: shopName, marketId: selectedMarket.id, marketName: selectedMarket.name, state: data.shop.state.trim(), district: data.shop.district.trim(), categoryId: selectedCategory.id, categoryName: selectedCategory.name, avatar: shopDoc.profileImage, banner: shopDoc.coverImage, rating: 0, reviewsCount: 0, verified: false, followersCount: 0, about: '', phone: data.phone?.trim() || '', address: data.shop.address?.trim() || '', ownerId: firebaseUser.uid, ownerName: data.name.trim() };
+      setShops(prev => [newShop, ...prev.filter(shop => shop.id !== shopId)]); setIsAuthModalOpen(false); showToast(`Congratulations! "${shopName}" is now open on Claymarket!`, 'success'); navigateTo('seller-dashboard');
+    } catch (error) { throw new Error(firebaseAuthError(error)); } finally { manualAuthInProgressRef.current = false; }
+  };
+
+  const updateProfilePicture = async (file: File) => {
+    if (!firebaseConfigured || !firebaseAuthClient || !firebaseDb) throw new Error('Firebase is not configured.');
+    const firebaseUser = firebaseAuthClient.currentUser; if (!firebaseUser) throw new Error('Please sign in before adding a profile picture.');
+    const validation = validateImageFile(file); if (!validation.valid) throw new Error(validation.error || 'Please choose a valid profile image.');
+    try {
+      const downloadUrl = await withTimeout(uploadToCloudinary(file, `profiles/${firebaseUser.uid}`), 20000, 'Profile picture upload timed out. Please check your connection and try again.');
+      await withTimeout(updateProfile(firebaseUser, { photoURL: downloadUrl }), 10000, 'Profile picture uploaded, but your account could not be updated. Please try again.');
+      await withTimeout(updateDoc(doc(firebaseDb, 'users', firebaseUser.uid), { avatar: downloadUrl, updatedAt: serverTimestamp() }), 10000, 'Profile picture uploaded, but your profile could not be saved. Please try again.');
+      setCurrentUser(prev => ({ ...prev, avatar: downloadUrl })); showToast('Profile picture updated successfully.', 'success');
+    } catch (error) { throw new Error(error instanceof Error ? error.message : 'Could not update your profile picture. Please try again.'); }
+  };
+
+  const logoutUser = async () => {
+    try { if (firebaseAuthClient) await signOut(firebaseAuthClient); } finally { clearAuthToken(); setCurrentUser(MOCK_USERS.guest); showToast('You have been logged out.', 'info'); }
+  };
+
+  // Cart operations
+  const addToCart = (product: Product, quantity = 1, size?: string, color?: string): boolean => {
+    if (product.price === undefined || product.price === null || !Number.isFinite(product.price)) { showToast('This product has no price yet. Please contact the seller.', 'warning'); return false; }
+    if (product.inStock === false || product.stockCount === 0) { showToast('This product is currently out of stock.', 'warning'); return false; }
+    const safeQuantity = Math.max(1, Math.floor(quantity)); const selectedSize = size || product.sizes?.[0] || 'Standard'; const selectedColor = color || product.colors?.[0]?.name || 'Default'; const cartItemId = `${product.id}-${selectedSize}-${selectedColor}`;
+    setCart(prev => { const existing = prev.find(item => item.id === cartItemId); if (existing) return prev.map(item => item.id === cartItemId ? { ...item, quantity: Math.min(item.quantity + safeQuantity, product.stockCount ?? Number.MAX_SAFE_INTEGER) } : item); return [...prev, { id: cartItemId, product, quantity: Math.min(safeQuantity, product.stockCount ?? safeQuantity), selectedSize, selectedColor }]; });
+    showToast(`Added "${product.name}" to cart!`, 'success'); return true;
+  };
+  const removeFromCart = (cartItemId: string) => { setCart(prev => prev.filter(item => item.id !== cartItemId)); showToast('Item removed from cart', 'info'); };
+  const updateCartQuantity = (cartItemId: string, delta: number) => { setCart(prev => prev.map(item => { if (item.id !== cartItemId) return item; const max = item.product.stockCount ?? Number.MAX_SAFE_INTEGER; return { ...item, quantity: Math.min(max, Math.max(1, item.quantity + delta)) }; })); };
+  const clearCart = () => setCart([]);
+
+  const toggleWishlist = (productId: string) => { if (currentUser.role === 'guest') { setIsAuthModalOpen(true); setAuthModalTab('login'); showToast('Please sign in to save items to your wishlist', 'info'); return; } setWishlist(prev => { const exists = prev.includes(productId); const updated = exists ? prev.filter(id => id !== productId) : [...prev, productId]; showToast(exists ? 'Removed from wishlist' : 'Saved to wishlist!', 'success'); return updated; }); };
+  const isWishlisted = (productId: string) => wishlist.includes(productId);
+  const toggleFollowShop = (shopId: string) => { if (currentUser.role === 'guest') { setIsAuthModalOpen(true); return; } setFollowedShops(prev => { const exists = prev.includes(shopId); const updated = exists ? prev.filter(id => id !== shopId) : [...prev, shopId]; showToast(exists ? 'Unfollowed shop' : 'Following shop! You will receive new product updates.', 'success'); return updated; }); };
+  const isFollowingShop = (shopId: string) => followedShops.includes(shopId);
+
+  const sendMessage = (conversationId: string, text: string) => {
+    const trimmed = text.trim(); if (!trimmed) return;
+    const senderRole: 'buyer' | 'seller' = currentUser.role === 'seller' ? 'seller' : 'buyer';
+    const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const optimisticMsg: ChatMessage = { id: tempId, conversationId, senderId: currentUser.id, senderRole, sender: senderRole, text: trimmed, timestamp: 'Just now' };
+    setConversations(prev => prev.map(conv => conv.id === conversationId ? { ...conv, lastMessage: trimmed, timestamp: 'Just now', messages: [...conv.messages, optimisticMsg] } : conv));
+    if (currentUser.role === 'guest') return;
+    void (async () => {
+      try { await apiRequest(`/conversations/${conversationId}/messages`, { method: 'POST', body: JSON.stringify({ text: trimmed }) }); await fetchConversations(); }
+      catch { showToast('Message failed to send. Check your connection and try again.', 'error'); setConversations(prev => prev.map(conv => conv.id === conversationId ? { ...conv, messages: conv.messages.filter(m => m.id !== tempId) } : conv)); }
+    })();
+  };
+
+  const startChatWithShop = (shop: Shop, initialProduct?: Product, initialQuestion?: string) => {
+    if (currentUser.role === 'guest') { setIsAuthModalOpen(true); setAuthModalTab('login'); showToast('Please sign in to message sellers directly', 'info'); return; }
+    if (shop.ownerId === currentUser.id) { showToast('You cannot message your own shop.', 'warning'); return; }
+    const existingConv = conversations.find(c => c.shopId === shop.id);
+    const openLocalPlaceholder = (convId: string) => {
+      setConversations(prev => { if (prev.some(c => c.id === convId)) return prev; return [{ id: convId, buyerId: currentUser.id, buyerName: currentUser.name, buyerAvatar: currentUser.avatar, sellerId: shop.ownerId, sellerName: shop.ownerName || shop.name, shopId: shop.id, shopName: shop.name, shopAvatar: shop.avatar, marketName: shop.marketName, productId: initialProduct?.id, productAttachment: initialProduct ? { id: initialProduct.id, name: initialProduct.name, price: initialProduct.price, image: initialProduct.images[0], shopName: shop.name } : undefined, lastMessage: `Started chat with ${shop.name}`, timestamp: 'Just now', unreadCount: 0, messages: [] }, ...prev]; });
+      setActiveConversationId(convId); setIsMessagesOpen(true);
+    };
+    if (existingConv) { setActiveConversationId(existingConv.id); setIsMessagesOpen(true); void fetchConversations(); return; }
+    const tempConvId = `conv_pending_${shop.id}_${Date.now()}`; openLocalPlaceholder(tempConvId);
+    void (async () => {
+      try {
+        const created = await apiRequest<any>('/conversations', { method: 'POST', body: JSON.stringify({ sellerId: shop.ownerId, shopId: shop.id, productId: initialProduct?.id }) });
+        const realId = String(created?._id || ''); if (!realId) throw new Error('Conversation was not created.');
+        setConversations(prev => prev.map(c => c.id === tempConvId ? { ...c, id: realId } : c)); setActiveConversationId(realId); await fetchConversations();
+      } catch (error) {
+        console.error('Could not start chat:', { message: error instanceof Error ? error.message : String(error), status: (error as { status?: number })?.status });
+        showToast('Could not start the chat. Please check your connection and try again.', 'error');
+        setConversations(prev => prev.filter(c => c.id !== tempConvId));
+      }
+    })();
+  };
+
+  const createOrder = async (deliveryType: 'pickup' | 'delivery', address?: string): Promise<Order | null> => {
+    if (currentUser.role === 'guest') { setIsAuthModalOpen(true); setAuthModalTab('login'); showToast('Please sign in to place an order', 'info'); return null; }
+    if (!cart.length) { showToast('Your cart is empty.', 'warning'); return null; }
+    if (cart.some(item => item.product.price === undefined || item.product.price === null || !Number.isFinite(item.product.price))) { showToast('Every cart item must have a price before checkout.', 'warning'); return null; }
+    const groups = new Map<string, CartItem[]>(); for (const item of cart) groups.set(item.product.shopId, [...(groups.get(item.product.shopId) || []), item]);
+    const resolvedAddress = address || (deliveryType === 'pickup' ? 'Shop Counter Pickup' : currentUser.addresses[0]?.street || 'Local Delivery Address');
+    const createdOrders: Order[] = [];
+    try {
+      for (const items of groups.values()) {
+        const payload = { items: items.map(item => ({ productId: item.product.id, quantity: item.quantity, selectedSize: item.selectedSize, selectedColor: item.selectedColor })), deliveryType, address: resolvedAddress };
+        const created = await apiRequest<any>('/orders', { method: 'POST', body: JSON.stringify(payload) }); createdOrders.push(mapBackendOrder(created, shops));
+      }
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Could not place the order. Please try again.', 'error');
+      if (createdOrders.length) { const orderedShopIds = new Set(createdOrders.map(o => o.shopId)); setCart(prev => prev.filter(item => !orderedShopIds.has(item.product.shopId))); setOrders(prev => [...createdOrders, ...prev]); void fetchOrders(); }
+      return createdOrders[0] || null;
+    }
+    setOrders(prev => [...createdOrders, ...prev]); clearCart(); showToast(`${createdOrders.length} order${createdOrders.length > 1 ? 's' : ''} placed successfully!`, 'success'); void fetchOrders(); return createdOrders[0] || null;
+  };
+
+  const updateOrderStatus = (orderId: string, status: Order['status']) => {
+    setOrders(prev => prev.map(ord => ord.id === orderId ? { ...ord, status } : ord)); showToast(`Order status updated to ${status}`, 'info');
+    void (async () => { try { await apiRequest(`/orders/${orderId}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }); await fetchOrders(); } catch { showToast('Could not save the status update. Please check your connection.', 'error'); void fetchOrders(); } })();
+  };
+
+  const uploadProductImageIfNeeded = async (productId: string, url: string): Promise<string> => { if (!url.startsWith('data:')) return url; const response = await fetch(url); return uploadToCloudinary(await response.blob(), `products/${currentUser.id}/${productId}`); };
+  const createProduct = async (productData: Partial<Product>): Promise<boolean> => {
+    const name = productData.name?.trim(); if (!name) { showToast('Product name is required.', 'warning'); return false; } if (!productData.images?.length) { showToast('Add at least one product photo.', 'warning'); return false; } if (currentUser.role !== 'seller' || !currentUser.shopId) { showToast('Please sign in as a seller before publishing a product.', 'warning'); return false; } if (!firebaseDb) { showToast('Firebase is not fully configured. Enable Firestore before publishing products.', 'error'); return false; }
+    const productId = `prod_${crypto.randomUUID()}`; const marketId = productData.marketId || currentUser.sellerLocation?.marketId || 'mkt_kachumara'; const market = markets.find(m => m.id === marketId); const category = categories.find(c => c.id === productData.categoryId);
+    try { const uploadedImages = await Promise.all(productData.images.map((url) => uploadProductImageIfNeeded(productId, String(url)))); const newProd = removeUndefined({ id: productId, sellerId: currentUser.id, shopId: currentUser.shopId, shopName: currentUser.shopName || 'Local Shop', marketId, marketName: market?.name || currentUser.sellerLocation?.marketName || 'Local Market', state: currentUser.sellerLocation?.state, district: currentUser.sellerLocation?.district, categoryId: productData.categoryId, categoryName: productData.categoryName || category?.name, shopCategoryId: productData.shopCategoryId, shopCategoryName: productData.shopCategoryName, name, price: productData.price, originalPrice: productData.originalPrice, description: productData.description?.trim() || undefined, images: uploadedImages, sizes: productData.sizes, colors: productData.colors, inStock: productData.stockCount !== undefined ? productData.stockCount > 0 : undefined, stockCount: productData.stockCount, material: productData.material?.trim() || undefined, rating: 0, reviewsCount: 0, status: 'published' }) as Product; await setDoc(doc(firebaseDb, 'products', productId), { ...newProd, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }); setProducts(prev => [newProd, ...prev.filter(p => p.id !== productId)]); showToast(`Product "${newProd.name}" published to your shop!`, 'success'); return true; }
+    catch (error) { showToast(error instanceof Error ? error.message : 'Unable to publish the product. Check that Firebase is configured correctly.', 'error'); return false; }
+  };
+  const updateProduct = async (productId: string, productData: Partial<Product>): Promise<boolean> => { const target = products.find(p => p.id === productId); if (!target) { showToast('Product not found.', 'error'); return false; } if (currentUser.role !== 'seller' || (target.shopId !== currentUser.shopId && target.sellerId !== currentUser.id)) { showToast('You are not allowed to edit this product.', 'error'); return false; } if (!firebaseDb) { showToast('Firebase is not fully configured. Enable Firestore before editing products.', 'error'); return false; } try { const nextImages = productData.images ? await Promise.all(productData.images.map((url) => uploadProductImageIfNeeded(productId, String(url))) ) : undefined; await updateDoc(doc(firebaseDb, 'products', productId), removeUndefined({ ...productData, ...(nextImages ? { images: nextImages } : {}), updatedAt: serverTimestamp() })); setProducts(prev => prev.map(p => p.id === productId ? { ...p, ...productData, ...(nextImages ? { images: nextImages } : {}) } : p)); showToast('Product updated successfully!', 'success'); return true; } catch (error) { showToast(error instanceof Error ? error.message : 'Unable to update the product.', 'error'); return false; } };
+  const deleteProduct = async (productId: string) => { const target = products.find(p => p.id === productId); if (!target) { showToast('Product not found.', 'error'); return; } if (currentUser.role !== 'seller' || (target.shopId !== currentUser.shopId && target.sellerId !== currentUser.id)) { showToast('You are not allowed to delete this product.', 'error'); return; } if (!firebaseDb) { showToast('Firebase is not configured. Product data cannot be deleted safely.', 'error'); return; } try { await deleteDoc(doc(firebaseDb, 'products', productId)); setProducts(prev => prev.filter(p => p.id !== productId)); showToast('Product removed from shop catalog', 'info'); } catch (error) { showToast(error instanceof Error ? error.message : 'Unable to remove the product.', 'error'); } };
+
+  const updateShopImages = async (shopId: string, updates: { avatarFile?: File | null; bannerFile?: File | null; removeAvatar?: boolean; removeBanner?: boolean }): Promise<boolean> => {
+    const target = shops.find(s => s.id === shopId); if (!target) { showToast('Shop not found.', 'error'); return false; } if (currentUser.role !== 'seller' || currentUser.shopId !== shopId) { showToast('You are not allowed to edit this shop.', 'error'); return false; } if (!firebaseDb) { showToast('Firebase is not fully configured. Enable Firestore first.', 'error'); return false; }
+    const DEFAULT_AVATAR = 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=500&auto=format&fit=crop&q=80'; const DEFAULT_BANNER = 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1000&auto=format&fit=crop&q=80';
+    try { const fieldUpdate: Record<string, unknown> = {}; const shopUpdate: Partial<Shop> = {}; if (updates.avatarFile) { const validation = validateImageFile(updates.avatarFile); if (!validation.valid) { showToast(validation.error || 'Invalid image file.', 'error'); return false; } const url = await uploadToCloudinary(updates.avatarFile, `shops/${shopId}`); fieldUpdate.profileImage = url; shopUpdate.avatar = url; } else if (updates.removeAvatar) { fieldUpdate.profileImage = DEFAULT_AVATAR; shopUpdate.avatar = DEFAULT_AVATAR; } if (updates.bannerFile) { const validation = validateImageFile(updates.bannerFile); if (!validation.valid) { showToast(validation.error || 'Invalid image file.', 'error'); return false; } const url = await uploadToCloudinary(updates.bannerFile, `shops/${shopId}`); fieldUpdate.coverImage = url; shopUpdate.banner = url; } else if (updates.removeBanner) { fieldUpdate.coverImage = DEFAULT_BANNER; shopUpdate.banner = DEFAULT_BANNER; } if (!Object.keys(fieldUpdate).length) return false; fieldUpdate.updatedAt = serverTimestamp(); await updateDoc(doc(firebaseDb, 'shops', shopId), fieldUpdate); setShops(prev => prev.map(s => s.id === shopId ? { ...s, ...shopUpdate } : s)); showToast('Shop photo updated!', 'success'); return true; } catch (error) { showToast(error instanceof Error ? error.message : 'Unable to update shop photo.', 'error'); return false; }
+  };
+
+  const updateShopDetails = async (shopId: string, updates: { phone?: string; address?: string; about?: string; openingHours?: string }): Promise<boolean> => {
+    const target = shops.find(s => s.id === shopId); if (!target) { showToast('Shop not found.', 'error'); return false; } if (currentUser.role !== 'seller' || currentUser.shopId !== shopId) { showToast('You are not allowed to edit this shop.', 'error'); return false; } if (!firebaseDb) { showToast('Firebase is not fully configured.', 'error'); return false; }
+    try { const fieldUpdate = removeUndefined({ phone: updates.phone?.trim(), address: updates.address?.trim(), description: updates.about?.trim(), openingHours: updates.openingHours?.trim(), updatedAt: serverTimestamp() }); await updateDoc(doc(firebaseDb, 'shops', shopId), fieldUpdate); setShops(prev => prev.map(s => s.id === shopId ? { ...s, phone: updates.phone !== undefined ? updates.phone.trim() : s.phone, address: updates.address !== undefined ? updates.address.trim() : s.address, about: updates.about !== undefined ? updates.about.trim() : s.about, openingHours: updates.openingHours !== undefined ? updates.openingHours.trim() : s.openingHours } : s)); showToast('Shop details updated!', 'success'); return true; } catch (error) { showToast(error instanceof Error ? error.message : 'Unable to update shop details.', 'error'); return false; }
+  };
+
+  const assertCategoryOwnership = (shopId: string): Shop | null => { const target = shops.find(s => s.id === shopId); if (!target) { showToast('Shop not found.', 'error'); return null; } if (currentUser.role !== 'seller' || currentUser.shopId !== shopId) { showToast('You are not allowed to edit this shop.', 'error'); return null; } return target; };
+  const addShopCategory = async (shopId: string, name: string): Promise<boolean> => { const target = assertCategoryOwnership(shopId); if (!target) return false; if (!firebaseDb) { showToast('Firebase is not fully configured.', 'error'); return false; } const trimmed = name.trim(); if (!trimmed) { showToast('Category name is required.', 'warning'); return false; } const existing = target.productCategories || []; if (existing.some(c => c.name.toLowerCase() === trimmed.toLowerCase())) { showToast('A category with this name already exists.', 'warning'); return false; } const nextCategories = [...existing, { id: `shopcat_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, name: trimmed }]; try { await updateDoc(doc(firebaseDb, 'shops', shopId), { productCategories: nextCategories, updatedAt: serverTimestamp() }); setShops(prev => prev.map(s => s.id === shopId ? { ...s, productCategories: nextCategories } : s)); showToast(`Category "${trimmed}" added.`, 'success'); return true; } catch (error) { showToast(error instanceof Error ? error.message : 'Unable to add category.', 'error'); return false; } };
+  const updateShopCategory = async (shopId: string, categoryId: string, name: string): Promise<boolean> => { const target = assertCategoryOwnership(shopId); if (!target) return false; if (!firebaseDb) { showToast('Firebase is not fully configured.', 'error'); return false; } const trimmed = name.trim(); if (!trimmed) { showToast('Category name is required.', 'warning'); return false; } const nextCategories = (target.productCategories || []).map(c => c.id === categoryId ? { ...c, name: trimmed } : c); try { const batch = writeBatch(firebaseDb); batch.update(doc(firebaseDb, 'shops', shopId), { productCategories: nextCategories, updatedAt: serverTimestamp() }); products.filter(p => p.shopId === shopId && p.shopCategoryId === categoryId).forEach(p => batch.update(doc(firebaseDb, 'products', p.id), { shopCategoryName: trimmed, updatedAt: serverTimestamp() })); await batch.commit(); setShops(prev => prev.map(s => s.id === shopId ? { ...s, productCategories: nextCategories } : s)); setProducts(prev => prev.map(p => p.shopId === shopId && p.shopCategoryId === categoryId ? { ...p, shopCategoryName: trimmed } : p)); showToast('Category updated.', 'success'); return true; } catch (error) { showToast(error instanceof Error ? error.message : 'Unable to update category.', 'error'); return false; } };
+  const deleteShopCategory = async (shopId: string, categoryId: string): Promise<boolean> => { const target = assertCategoryOwnership(shopId); if (!target) return false; if (!firebaseDb) { showToast('Firebase is not fully configured.', 'error'); return false; } const nextCategories = (target.productCategories || []).filter(c => c.id !== categoryId); try { const batch = writeBatch(firebaseDb); batch.update(doc(firebaseDb, 'shops', shopId), { productCategories: nextCategories, updatedAt: serverTimestamp() }); products.filter(p => p.shopId === shopId && p.shopCategoryId === categoryId).forEach(p => batch.update(doc(firebaseDb, 'products', p.id), { shopCategoryId: deleteField(), shopCategoryName: deleteField(), updatedAt: serverTimestamp() })); await batch.commit(); setShops(prev => prev.map(s => s.id === shopId ? { ...s, productCategories: nextCategories } : s)); setProducts(prev => prev.map(p => p.shopId === shopId && p.shopCategoryId === categoryId ? { ...p, shopCategoryId: undefined, shopCategoryName: undefined } : p)); showToast('Category removed.', 'info'); return true; } catch (error) { showToast(error instanceof Error ? error.message : 'Unable to remove category.', 'error'); return false; } };
+
+  const registerShop = (shopData: Partial<Shop>) => { showToast('Please use the seller registration flow to create a shop.', 'info'); navigateTo('seller-dashboard'); };
+
+  return (
+    <AppContext.Provider value={{ currentView, activeNavTab, navigateTo, goBack, selectedMarket, selectedShop, selectedProduct, selectedCategory, searchQuery, setSearchQuery, performSearch, filteredMarkets, filteredShops, filteredProducts, currentUser, loginUser, registerAccount, registerSeller, logoutUser, updateProfilePicture, isAuthModalOpen, setIsAuthModalOpen, authModalTab, setAuthModalTab, markets, addMarketAdmin, deleteMarketAdmin, shops, products, categories, cart, addToCart, removeFromCart, updateCartQuantity, clearCart, isCartOpen, setIsCartOpen, wishlist, toggleWishlist, isWishlisted, conversations, activeConversationId, setActiveConversationId, sendMessage, startChatWithShop, isMessagesOpen, setIsMessagesOpen, orders, createOrder, updateOrderStatus, createProduct, updateProduct, deleteProduct, registerShop, updateShopImages, updateShopDetails, addShopCategory, updateShopCategory, deleteShopCategory, toasts, showToast, removeToast, followedShops, toggleFollowShop, isFollowingShop }}>{children}</AppContext.Provider>
+  );
+};
+
+export const useApp = () => { const context = useContext(AppContext); if (!context) throw new Error('useApp must be used within an AppProvider'); return context; };
