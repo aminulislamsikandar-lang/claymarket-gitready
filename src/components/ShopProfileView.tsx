@@ -28,6 +28,7 @@ export const ShopProfileView: React.FC = () => {
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [isUploadingBanner, setIsUploadingBanner] = useState(false);
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
+  const [locallyDeletedProductIds, setLocallyDeletedProductIds] = useState<Set<string>>(new Set());
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
 
@@ -40,7 +41,7 @@ export const ShopProfileView: React.FC = () => {
   const isOwnerSeller = currentUser.role === 'seller' && (currentUser.shopId === shop.id || shop.id === 'shop_aminul' || currentUser.id === 'user_aminul');
 
   // Shop products (hide hidden products from public shop)
-  const shopProducts = products.filter(p => p.shopId === shop.id && p.status !== 'hidden');
+  const shopProducts = products.filter(p => p.shopId === shop.id && p.status !== 'hidden' && !locallyDeletedProductIds.has(p.id));
   const shopCategories = shop.productCategories || [];
   const filteredProducts = productCategoryFilter === 'all'
     ? shopProducts
@@ -132,8 +133,12 @@ export const ShopProfileView: React.FC = () => {
     setDeletingProductId(product.id);
     try {
       await apiRequest(`/products/${encodeURIComponent(product.id)}`, { method: 'DELETE' });
+      setLocallyDeletedProductIds(prev => {
+        const next = new Set(prev);
+        next.add(product.id);
+        return next;
+      });
       showToast('Product deleted from your shop.', 'success');
-      window.setTimeout(() => window.location.reload(), 350);
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Unable to delete the product. Please try again.', 'error');
     } finally {
