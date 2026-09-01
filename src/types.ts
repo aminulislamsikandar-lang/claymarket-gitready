@@ -188,3 +188,23 @@ export interface Order {
   deliveryType: 'pickup' | 'delivery';
   address?: string;
 }
+
+export interface Review {
+  id: string;
+  productId: string;
+  userId: string;
+  authorName: string;
+  authorAvatar?: string;
+  rating: number;
+  comment: string;
+  date: string;
+}
+
+export type AppView =
+  | 'markets' | 'shops' | 'categories' | 'about' | 'faq' | 'privacy' | 'terms'
+  | 'market-detail' | 'category-detail' | 'shop-detail' | 'product-detail'
+  | 'orders' | 'wishlist' | 'messages' | 'profile' | 'saved-addresses'
+  | 'settings' | 'notifications' | 'help' | 'seller-dashboard'
+  | 'admin-dashboard' | 'not-found';
+
+export type NavigationTab = 'markets' | 'shops' | 'categories' | 'about';
