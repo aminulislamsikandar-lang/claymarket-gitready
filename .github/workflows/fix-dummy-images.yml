@@ -1,0 +1,51 @@
+name: Fix Dummy Images
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remove demo image fallbacks
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/context/AppContext.tsx')
+          text = p.read_text(encoding='utf-8')
+          replacements = {
+            "bannerImage: String(raw?.bannerImage || 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=800&auto=format&fit=crop&q=80')": "bannerImage: String(raw?.bannerImage || '')",
+            "avatar: String(raw.profileImage || raw.avatar || 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=500&auto=format&fit=crop&q=80')": "avatar: String(raw.profileImage || raw.avatar || '')",
+            "banner: String(raw.coverImage || raw.banner || raw.profileImage || 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1000&auto=format&fit=crop&q=80')": "banner: String(raw.coverImage || raw.banner || raw.profileImage || '')",
+            "profileImage: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=500&auto=format&fit=crop&q=80'": "profileImage: ''",
+            "coverImage: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1000&auto=format&fit=crop&q=80'": "coverImage: ''",
+            "const DEFAULT_AVATAR = 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=500&auto=format&fit=crop&q=80';": "const DEFAULT_AVATAR = '';",
+            "const DEFAULT_BANNER = 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1000&auto=format&fit=crop&q=80';": "const DEFAULT_BANNER = '';",
+          }
+          for old, new in replacements.items():
+            text = text.replace(old, new)
+          marker = "const removeUndefined = (value: any): any => {"
+          helper = "const isDummyImage = (value: unknown): boolean => { const url = String(value || '').trim().toLowerCase(); return url.includes('images.unsplash.com') || url.includes('images.pexels.com'); };\nconst cleanImageUrl = (value: unknown): string => { const url = String(value || '').trim(); return isDummyImage(url) ? '' : url; };\n\n"
+          if 'const isDummyImage =' not in text:
+            text = text.replace(marker, helper + marker, 1)
+          text = text.replace("bannerImage: String(raw?.bannerImage || '')", "bannerImage: cleanImageUrl(raw?.bannerImage)")
+          text = text.replace("avatar: String(raw.profileImage || raw.avatar || '')", "avatar: cleanImageUrl(raw.profileImage || raw.avatar)")
+          text = text.replace("banner: String(raw.coverImage || raw.banner || raw.profileImage || '')", "banner: cleanImageUrl(raw.coverImage || raw.banner || raw.profileImage)")
+          p.write_text(text, encoding='utf-8')
+          PY
+      - name: Remove temporary cleanup workflows
+        run: rm -f .github/workflows/strip-dummy-images.yml .github/workflows/fix-dummy-images.yml
+      - name: Commit fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/context/AppContext.tsx .github/workflows/strip-dummy-images.yml .github/workflows/fix-dummy-images.yml
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Treat demo images as empty seller media'
+          git push
