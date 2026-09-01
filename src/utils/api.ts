@@ -1,4 +1,5 @@
 import { firebaseAuthClient } from '../firebase';
+import './shopDeletionEnhancer';
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
 
