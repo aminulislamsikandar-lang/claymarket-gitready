@@ -68,3 +68,5 @@ The production stack no longer starts or requires MongoDB. Firebase Authenticati
 ## Security
 
 Never commit Firebase Admin service-account credentials or private keys. Use deployment secrets or Application Default Credentials.
+
+<!-- cleanup trigger -->
