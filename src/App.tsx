@@ -1,4 +1,4 @@
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Header } from './components/Header';
 import { HeroMarkets } from './components/HeroMarkets';
@@ -55,6 +55,13 @@ const AppContent: React.FC = () => {
     shops,
     products,
   } = useApp();
+  const [initialRouteResolved, setInitialRouteResolved] = useState(false);
+
+  useEffect(() => {
+    // Let the AppContext route-sync effect resolve the URL on the first
+    // mount before AppContent is allowed to render a genuine 404.
+    setInitialRouteResolved(true);
+  }, []);
 
   const renderCurrentView = () => {
     switch (currentView) {
@@ -62,18 +69,18 @@ const AppContent: React.FC = () => {
         // On a hard refresh, remote marketplace data loads after the first
         // render. Do not briefly show the 404 page while selectedMarket is
         // still being resolved from the URL.
-        return selectedMarket ? <MarketDetailView /> : markets.length === 0 ? null : <NotFoundPage />;
+        return selectedMarket ? <MarketDetailView /> : !initialRouteResolved ? null : markets.length === 0 ? null : <NotFoundPage />;
       case 'category-detail':
         // Categories are local/static, so selectedCategory is resolved by the
         // route-sync effect immediately after mount. Avoid a one-frame 404.
-        return selectedCategory ? <CategoryDetailView /> : null;
+        return selectedCategory ? <CategoryDetailView /> : !initialRouteResolved ? null : null;
       case 'shop-detail':
         // Shop data is remote. During the initial refresh selectedShop is
-        // temporarily null, so wait for the collection before deciding that
-        // the URL is genuinely invalid.
-        return selectedShop ? <ShopProfileView /> : shops.length === 0 ? null : <NotFoundPage />;
+        // temporarily null, so wait for the route-sync effect before deciding
+        // that the URL is genuinely invalid.
+        return selectedShop ? <ShopProfileView /> : !initialRouteResolved ? null : shops.length === 0 ? null : <NotFoundPage />;
       case 'product-detail':
-        return selectedProduct ? <ProductDetailView /> : products.length === 0 ? null : <NotFoundPage />;
+        return selectedProduct ? <ProductDetailView /> : !initialRouteResolved ? null : products.length === 0 ? null : <NotFoundPage />;
       case 'shops':
         return <ShopsListPage />;
       case 'categories':
