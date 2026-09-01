@@ -29,7 +29,7 @@ if (typeof window !== 'undefined') {
 // capture phase, so a single listener here catches every <img> failure
 // across the app without touching each component individually.
 const FALLBACK_IMAGE_SRC =
-  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Crect width='200' height='200' fill='%23F0EEEA'/%3E%3Cpath d='M60 130l28-34 20 22 18-26 34 38z' fill='%23D9D5CE'/%3E%3Ccircle cx='78' cy='72' r='12' fill='%23D9D5CE'/%3E%3C/svg%3E";
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%23F3F4F6'/%3E%3Crect x='12' y='16' width='40' height='32' rx='3' fill='none' stroke='%239CA3AF' stroke-width='2.5'/%3E%3Cpath d='M16 42l10-12 7 8 6-8 9 12' fill='none' stroke='%239CA3AF' stroke-width='2.5'/%3E%3Ccircle cx='24' cy='26' r='3.5' fill='%239CA3AF'/%3E%3Cpath d='M20 20l24 24' stroke='%239CA3AF' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E";
 
 document.addEventListener(
   'error',

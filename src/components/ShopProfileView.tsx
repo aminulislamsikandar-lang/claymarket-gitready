@@ -62,8 +62,8 @@ export const ShopProfileView: React.FC = () => {
     }
   };
 
-  const DEFAULT_AVATAR_URL = 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=500&auto=format&fit=crop&q=80';
-  const DEFAULT_BANNER_URL = 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1000&auto=format&fit=crop&q=80';
+  const DEFAULT_AVATAR_URL = '';
+  const DEFAULT_BANNER_URL = '';
 
   const handleAvatarFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

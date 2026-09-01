@@ -10,7 +10,7 @@ import { Product } from '../models/Product.js';
 // Other markets should be created through the admin flow and become publicly
 // visible only after a real seller has a shop there.
 const markets = [
-  ['mkt_kachumara','Kachumara Market','kachumara-market','Kachumara, Barpeta District, Assam','https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=800','A local marketplace for footwear and everyday goods.'],
+  ['mkt_kachumara','Kachumara Market','kachumara-market','Kachumara, Barpeta District, Assam','','A local marketplace for footwear and everyday goods.'],
 ];
 const categories = [
   ['cat_slippers','Slippers','slippers','Comfortable daily footwear and sandals.'],
@@ -20,9 +20,9 @@ const categories = [
   ['cat_grocery','Grocery','grocery','Local produce, tea, rice and grains.'],
   ['cat_more','More','more','Stationery, tools, bags and local crafts.'],
 ];
-const img1='https://images.unsplash.com/photo-1549298916-b41d501d3772?w=700';
-const img2='https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?w=700';
-const img3='https://images.unsplash.com/photo-1560769629-975ec94e6a86?w=700';
+const img1='';
+const img2='';
+const img3='';
 
 async function clearCollection(name) {
   const db = firestore();
@@ -62,7 +62,7 @@ async function seed() {
     { _id:'prod_black-comfort-slipper', sellerId:sellerUser.uid, shopId:shop._id, marketId:km._id, marketName:km.name, state:'Assam', district:'Barpeta', categoryIds:[slippers._id], name:'Black Comfort Slipper', price:299, originalPrice:399, description:'Comfortable everyday slipper.', stock:20, sizes:['7','8','9','10'], colors:[{name:'Black',hex:'#000000'}], images:[{url:img1,isPrimary:true}], status:'published' },
     { _id:'prod_brown-casual-slipper', sellerId:sellerUser.uid, shopId:shop._id, marketId:km._id, marketName:km.name, state:'Assam', district:'Barpeta', categoryIds:[slippers._id], name:'Brown Casual Slipper', price:349, originalPrice:449, description:'Casual local footwear.', stock:14, sizes:['7','8','9'], colors:[{name:'Brown',hex:'#7b4b2a'}], images:[{url:img2,isPrimary:true}], status:'published' },
     { _id:'prod_daily-wear-flip-flop', sellerId:sellerUser.uid, shopId:shop._id, marketId:km._id, marketName:km.name, state:'Assam', district:'Barpeta', categoryIds:[slippers._id], name:'Daily Wear Flip Flop', images:[{url:img3,isPrimary:true}], status:'published' },
-    { _id:'prod_local-cotton-market-shirt', sellerId:sellerUser.uid, shopId:shop._id, marketId:km._id, categoryIds:[clothes._id], name:'Local Cotton Market Shirt', price:599, images:[{url:'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=700',isPrimary:true}], status:'hidden' },
+    { _id:'prod_local-cotton-market-shirt', sellerId:sellerUser.uid, shopId:shop._id, marketId:km._id, categoryIds:[clothes._id], name:'Local Cotton Market Shirt', price:599, images:[{url:'',isPrimary:true}], status:'hidden' },
   ]);
   console.log('Firebase seed complete. Seed password is supplied via SEED_PASSWORD.');
 }

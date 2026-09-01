@@ -426,7 +426,7 @@ export const SellerDashboardView: React.FC = () => {
                     <div className="flex items-start sm:items-center gap-3.5 min-w-0 flex-1">
                       <div className="relative shrink-0">
                         <img loading="lazy" decoding="async" 
-                          src={p.images[0] || 'https://images.unsplash.com/photo-1549298916-b41d501d3772?w=800&auto=format&fit=crop&q=80'} 
+                          src={p.images[0] || ''} 
                           alt={p.name} 
                           className="w-16 h-16 rounded-2xl object-cover ring-1 ring-gray-100" 
                         />
@@ -644,7 +644,7 @@ export const SellerDashboardView: React.FC = () => {
               >
                 <div className="flex items-center gap-3.5 min-w-0">
                   <img loading="lazy" decoding="async" 
-                    src={conv.buyerAvatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80'} 
+                    src={conv.buyerAvatar || ''} 
                     alt={conv.buyerName || 'Buyer'} 
                     className="w-12 h-12 rounded-full object-cover ring-2 ring-[#DDD4FF] shrink-0" 
                   />
@@ -707,7 +707,7 @@ export const SellerDashboardView: React.FC = () => {
 
             <div className="p-3 rounded-2xl bg-[#FAF8FE] border border-[#DDD4FF] flex items-center gap-3">
               <img loading="lazy" decoding="async" 
-                src={productToHide.images[0] || 'https://images.unsplash.com/photo-1549298916-b41d501d3772?w=800&auto=format&fit=crop&q=80'} 
+                src={productToHide.images[0] || ''} 
                 alt={productToHide.name} 
                 className="w-12 h-12 rounded-xl object-cover ring-1 ring-gray-200 shrink-0" 
               />
@@ -765,7 +765,7 @@ export const SellerDashboardView: React.FC = () => {
 
             <div className="p-3 rounded-2xl bg-red-50/50 border border-red-100 flex items-center gap-3">
               <img loading="lazy" decoding="async" 
-                src={productToDelete.images[0] || 'https://images.unsplash.com/photo-1549298916-b41d501d3772?w=800&auto=format&fit=crop&q=80'} 
+                src={productToDelete.images[0] || ''} 
                 alt={productToDelete.name} 
                 className="w-12 h-12 rounded-xl object-cover ring-1 ring-gray-200 shrink-0" 
               />

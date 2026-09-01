@@ -32,7 +32,7 @@ export const MarketsGrid: React.FC = () => {
         id: marketId,
         name: marketName,
         slug: marketName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || marketId,
-        bannerImage: shop.banner || shop.avatar || 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=800&auto=format&fit=crop&q=80',
+        bannerImage: shop.banner || shop.avatar || '',
         location,
         description,
         featuredCategories: shop.categoryId ? [shop.categoryId] : [],
