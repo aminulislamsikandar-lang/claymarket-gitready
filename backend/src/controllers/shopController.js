@@ -26,7 +26,7 @@ export const listShops = async (req, res) => {
 };
 
 export const getShop = async (req, res) => {
-  const shop = await Shop.findById(req.params.id).populate('marketId', 'name slug').populate('categoryIds', 'name slug').populate('ownerId', 'name email avatar');
+  const shop = await Shop.findById(req.params.id).populate('marketId', 'name slug').populate('ownerId', 'name email avatar');
   if (!shop) return fail(res, 'Shop not found.', 404);
   return ok(res, shop);
 };
@@ -36,6 +36,15 @@ export const createShop = async (req, res) => {
   if (!name || !marketId) return fail(res, 'Shop name and market are required.');
   if (req.user.role !== 'seller' && req.user.role !== 'admin') return fail(res, 'Seller access required.', 403);
   if (typeof onlineOrdering !== 'boolean') return fail(res, 'onlineOrdering must be true or false.');
+
+  // A Claymarket seller owns exactly one shop. The older API allowed a new
+  // Firestore document to be created on every request, which could produce
+  // multiple shops for the same Firebase user. Refuse duplicate creation.
+  if (req.user.role === 'seller') {
+    const existingShops = await Shop.find({ ownerId: req.user._id }).limit(1);
+    if (existingShops.length) return fail(res, 'You already have a shop. Each seller can have only one shop.', 409);
+  }
+
   if (!await Market.exists({ _id: marketId })) return fail(res, 'Market not found.', 404);
   if (categoryIds.length && await Category.countDocuments({ _id: { $in: categoryIds } }) !== categoryIds.length) return fail(res, 'One or more categories are invalid.');
   const slugBase = name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
