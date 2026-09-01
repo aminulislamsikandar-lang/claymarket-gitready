@@ -1,6 +1,7 @@
 import { Market } from '../models/Market.js';
 import { Category } from '../models/Category.js';
 import { Shop } from '../models/Shop.js';
+import { Product } from '../models/Product.js';
 import { ok, fail } from '../utils/apiResponse.js';
 
 const MAX_SEARCH_LENGTH = 80;
@@ -80,6 +81,9 @@ export const deleteShop = async (req, res) => {
   const shop = await Shop.findById(req.params.id);
   if (!shop) return fail(res, 'Shop not found.', 404);
   if (req.user.role !== 'admin' && shop.ownerId.toString() !== req.user._id.toString()) return fail(res, 'You can only delete your own shop.', 403);
+
+  // Remove products first so no public product remains attached to a deleted shop.
+  await Product.deleteMany({ shopId: shop._id });
   await shop.deleteOne();
   return ok(res, { deleted: true });
 };
