@@ -1,0 +1,61 @@
+name: Strip Dummy Images
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  strip:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remove hard-coded dummy photo URLs
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          urls = [
+              'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=800&auto=format&fit=crop&q=80',
+              'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=500&auto=format&fit=crop&q=80',
+              'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1000&auto=format&fit=crop&q=80',
+          ]
+          for root in (Path('src'), Path('backend')):
+              if not root.exists():
+                  continue
+              for path in root.rglob('*'):
+                  if path.is_file() and path.suffix in {'.ts', '.tsx', '.js', '.jsx', '.json', '.css'}:
+                      text = path.read_text(encoding='utf-8')
+                      new = text
+                      for url in urls:
+                          new = new.replace(url, '')
+                      if new != text:
+                          path.write_text(new, encoding='utf-8')
+          PY
+      - name: Add empty-image styling
+        shell: bash
+        run: |
+          cat >> src/index.css <<'CSS'
+
+/* Empty-image state: never use stock/demo photos when no real seller image exists. */
+img[src=""] {
+  background-color: #f3f4f6;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='10' y='14' width='44' height='36' rx='4' fill='none' stroke='%23737B89' stroke-width='4'/%3E%3Cpath d='M16 44l11-11 8 8 7-7 6 10' fill='none' stroke='%23737B89' stroke-width='4'/%3E%3Ccircle cx='25' cy='25' r='4' fill='%23737B89'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 32px 32px;
+}
+CSS
+      - name: Commit cleaned source
+        shell: bash
+        run: |
+          rm -f .github/workflows/strip-dummy-images.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src .github/workflows/strip-dummy-images.yml
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Remove dummy photos and add empty image state'
+          git push
