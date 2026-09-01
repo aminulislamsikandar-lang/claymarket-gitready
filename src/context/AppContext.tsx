@@ -39,7 +39,7 @@ interface AppContextType {
   followedShops: string[]; toggleFollowShop: (shopId: string) => void; isFollowingShop: (shopId: string) => boolean;
 }
 
-const isDummyImage = (value: unknown): boolean => { const url = String(value || '').trim().toLowerCase(); return url.includes('images.unsplash.com') || url.includes('images.pexels.com'); };
+const isDummyImage = (value: unknown): boolean => { const url = String(value || '').trim().toLowerCase(); return !url || !url.startsWith('https://res.cloudinary.com/'); };
 const cleanImageUrl = (value: unknown): string => { const url = String(value || '').trim(); return isDummyImage(url) ? '' : url; };
 const removeUndefined = (value: any): any => { if (Array.isArray(value)) return value.map(removeUndefined); if (value && typeof value === 'object' && value.constructor === Object) return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined).map(([key, entry]) => [key, removeUndefined(entry)])); return value; };
 const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> => { let timeoutId: ReturnType<typeof setTimeout> | undefined; try { return await Promise.race([promise, new Promise<T>((_, reject) => { timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs); })]); } finally { if (timeoutId) clearTimeout(timeoutId); } };
