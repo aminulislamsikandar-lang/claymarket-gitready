@@ -1,0 +1,42 @@
+name: Apply product delete UI patch
+on:
+  push:
+    branches: [fix/market-autocomplete-seller]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch delete UI without reload
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/components/ShopProfileView.tsx')
+          s = p.read_text()
+          old = """  const [deletingProductId, setDeletingProductId] = useState<string | null>(null);\n"""
+          new = old + """  const [locallyDeletedProductIds, setLocallyDeletedProductIds] = useState<Set<string>>(new Set());\n"""
+          if old not in s:
+              raise SystemExit('state anchor not found')
+          s = s.replace(old, new, 1)
+          old = """  const shopProducts = products.filter(p => p.shopId === shop.id && p.status !== 'hidden');\n"""
+          new = """  const shopProducts = products.filter(p => p.shopId === shop.id && p.status !== 'hidden' && !locallyDeletedProductIds.has(p.id));\n"""
+          if old not in s:
+              raise SystemExit('products anchor not found')
+          s = s.replace(old, new, 1)
+          old = """      showToast('Product deleted from your shop.', 'success');\n      window.setTimeout(() => window.location.reload(), 350);\n"""
+          new = """      setLocallyDeletedProductIds(prev => {\n        const next = new Set(prev);\n        next.add(product.id);\n        return next;\n      });\n      showToast('Product deleted from your shop.', 'success');\n"""
+          if old not in s:
+              raise SystemExit('delete handler anchor not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .github/workflows/apply-product-delete-ui-patch.yml
+          git add src/components/ShopProfileView.tsx .github/workflows/apply-product-delete-ui-patch.yml
+          git commit -m "fix: keep shop view stable after product deletion"
+          git push origin fix/market-autocomplete-seller
