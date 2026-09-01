@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useEffect, useState } from 'react';
+import React, { Suspense, lazy } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Header } from './components/Header';
 import { HeroMarkets } from './components/HeroMarkets';
@@ -13,7 +13,12 @@ import { AuthModal } from './components/AuthModal';
 import { CookieConsent } from './components/CookieConsent';
 import { Analytics } from './components/Analytics';
 import { SEO } from './components/SEO';
+import { ShopOnlineOrderStatus } from './components/ShopOnlineOrderStatus';
 
+// Everything below is only needed once someone navigates away from the
+// homepage, so it is code-split into its own chunk instead of bloating the
+// very first page load. This is purely a bundling change — every view still
+// renders exactly the same as before, just fetched on demand.
 const MarketDetailView = lazy(() => import('./components/MarketDetailView').then(m => ({ default: m.MarketDetailView })));
 const CategoryDetailView = lazy(() => import('./components/CategoryDetailView').then(m => ({ default: m.CategoryDetailView })));
 const ShopProfileView = lazy(() => import('./components/ShopProfileView').then(m => ({ default: m.ShopProfileView })));
@@ -40,33 +45,23 @@ const ViewLoadingFallback: React.FC = () => (
 );
 
 const AppContent: React.FC = () => {
-  const {
-    currentView,
-    toasts,
-    selectedMarket,
-    selectedShop,
-    selectedProduct,
-    selectedCategory,
-  } = useApp();
-
-  const [initialRouteResolved, setInitialRouteResolved] = useState(false);
-
-  useEffect(() => {
-    setInitialRouteResolved(true);
-  }, []);
+  const { currentView, toasts, selectedMarket, selectedShop, selectedProduct, selectedCategory } = useApp();
 
   const renderCurrentView = () => {
     switch (currentView) {
       case 'market-detail':
-        return selectedMarket ? <MarketDetailView /> : !initialRouteResolved ? null : <NotFoundPage />;
+        return selectedMarket ? <MarketDetailView /> : <NotFoundPage />;
       case 'category-detail':
-        return selectedCategory ? <CategoryDetailView /> : !initialRouteResolved ? null : <NotFoundPage />;
+        return selectedCategory ? <CategoryDetailView /> : <NotFoundPage />;
       case 'shop-detail':
         return selectedShop ? (
-          <ShopOnlineOrderStatusMissingSafePlaceholder />
-        ) : !initialRouteResolved ? null : <NotFoundPage />;
+          <div className="space-y-3">
+            <ShopOnlineOrderStatus shop={selectedShop} />
+            <ShopProfileView />
+          </div>
+        ) : <NotFoundPage />;
       case 'product-detail':
-        return selectedProduct ? <ProductDetailView /> : !initialRouteResolved ? null : <NotFoundPage />;
+        return selectedProduct ? <ProductDetailView /> : <NotFoundPage />;
       case 'shops':
         return <ShopsListPage />;
       case 'categories':
@@ -138,15 +133,6 @@ const AppContent: React.FC = () => {
       <CookieConsent />
     </div>
   );
-};
-
-const ShopOnlineOrderStatusMissingSafePlaceholder: React.FC = () => {
-  const { selectedShop } = useApp();
-  const [ShopOnlineOrderStatus, setShopOnlineOrderStatus] = useState<React.ComponentType<{ shop: NonNullable<typeof selectedShop> }> | null>(null);
-  useEffect(() => {
-    void import('./components/ShopOnlineOrderStatus').then(module => setShopOnlineOrderStatus(() => module.ShopOnlineOrderStatus));
-  }, []);
-  return selectedShop && ShopOnlineOrderStatus ? <ShopOnlineOrderStatus shop={selectedShop} /> : selectedShop ? <ShopProfileView /> : null;
 };
 
 export default function App() {
