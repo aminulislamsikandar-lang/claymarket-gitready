@@ -44,18 +44,34 @@ const ViewLoadingFallback: React.FC = () => (
 );
 
 const AppContent: React.FC = () => {
-  const { currentView, toasts, selectedMarket, selectedShop, selectedProduct, selectedCategory } = useApp();
+  const {
+    currentView,
+    toasts,
+    selectedMarket,
+    selectedShop,
+    selectedProduct,
+    selectedCategory,
+    markets,
+    shops,
+    products,
+  } = useApp();
 
   const renderCurrentView = () => {
     switch (currentView) {
       case 'market-detail':
-        return selectedMarket ? <MarketDetailView /> : <NotFoundPage />;
+        // On a hard refresh, remote marketplace data loads after the first
+        // render. Do not briefly show the 404 page while selectedMarket is
+        // still being resolved from the URL.
+        return selectedMarket ? <MarketDetailView /> : markets.length === 0 ? null : <NotFoundPage />;
       case 'category-detail':
-        return selectedCategory ? <CategoryDetailView /> : <NotFoundPage />;
+        return selectedCategory ? <CategoryDetailView /> : categories.length === 0 ? null : <NotFoundPage />;
       case 'shop-detail':
-        return selectedShop ? <ShopProfileView /> : <NotFoundPage />;
+        // Shop data is remote. During the initial refresh selectedShop is
+        // temporarily null, so wait for the collection before deciding that
+        // the URL is genuinely invalid.
+        return selectedShop ? <ShopProfileView /> : shops.length === 0 ? null : <NotFoundPage />;
       case 'product-detail':
-        return selectedProduct ? <ProductDetailView /> : <NotFoundPage />;
+        return selectedProduct ? <ProductDetailView /> : products.length === 0 ? null : <NotFoundPage />;
       case 'shops':
         return <ShopsListPage />;
       case 'categories':
