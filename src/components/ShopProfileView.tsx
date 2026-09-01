@@ -11,6 +11,7 @@ import { Shop, Product } from '../types';
 import { AddEditProductModal } from './AddEditProductModal';
 import { EditShopDetailsModal } from './EditShopDetailsModal';
 import { EMPTY_SHOP_FALLBACK } from '../utils/fallbacks';
+import { apiRequest } from '../utils/api';
 
 export const ShopProfileView: React.FC = () => {
   const { 
@@ -18,7 +19,6 @@ export const ShopProfileView: React.FC = () => {
     toggleWishlist, isWishlisted, addToCart, startChatWithShop,
     toggleFollowShop, isFollowingShop, showToast,
     updateShopImages, addShopCategory, updateShopCategory, deleteShopCategory,
-    updateProduct, deleteProduct,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'products' | 'reviews' | 'photos' | 'about'>('products');
@@ -131,8 +131,11 @@ export const ShopProfileView: React.FC = () => {
     if (!window.confirm(`Delete "${product.name}" from your shop? This will remove the entire product listing.`)) return;
     setDeletingProductId(product.id);
     try {
-      await deleteProduct(product.id);
+      await apiRequest(`/products/${encodeURIComponent(product.id)}`, { method: 'DELETE' });
       showToast('Product deleted from your shop.', 'success');
+      window.setTimeout(() => window.location.reload(), 350);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Unable to delete the product. Please try again.', 'error');
     } finally {
       setDeletingProductId(null);
     }
