@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { listProducts, getProduct, searchProducts, createProduct, updateProduct, updateProductStatus, deleteProduct } from '../controllers/productController.js';
-import { authenticateUser, requireSeller } from '../middleware/auth.js';
+import { authenticateFirebaseUser, authenticateUser, requireSeller } from '../middleware/auth.js';
 const router = Router();
 router.get('/', listProducts);
 router.get('/search', searchProducts);
@@ -11,5 +11,5 @@ router.get('/:id', getProduct);
 router.post('/', authenticateUser, requireSeller, createProduct);
 router.put('/:id', authenticateUser, requireSeller, updateProduct);
 router.patch('/:id/status', authenticateUser, requireSeller, updateProductStatus);
-router.delete('/:id', authenticateUser, requireSeller, deleteProduct);
+router.delete('/:id', authenticateFirebaseUser, deleteProduct);
 export default router;
