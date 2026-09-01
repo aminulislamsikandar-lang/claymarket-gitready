@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { firebaseAuth, firestore } from '../config/firebase.js';
+import { firestore } from '../config/firebase.js';
 import { Category } from '../models/Category.js';
 
 // Production-safe seed policy:
@@ -25,15 +25,9 @@ async function clearCollection(name) {
 }
 
 async function seed() {
-  // This seed intentionally resets demo/user marketplace data so no old
+  // This seed intentionally resets runtime marketplace data so no old
   // seeded market/shop/image can be recreated by running the seed again.
-  const password = process.env.SEED_PASSWORD;
-  if (!password || password.length < 8) {
-    throw new Error('Set SEED_PASSWORD (8+ chars) before running the Firebase seed.');
-  }
-
-  // Clear all runtime data. Firebase Auth users are intentionally not deleted
-  // here because the seed no longer creates demo users.
+  // Firebase Auth users are intentionally left untouched.
   for (const collection of [
     'users',
     'markets',
