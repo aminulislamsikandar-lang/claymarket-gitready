@@ -64,7 +64,9 @@ const AppContent: React.FC = () => {
         // still being resolved from the URL.
         return selectedMarket ? <MarketDetailView /> : markets.length === 0 ? null : <NotFoundPage />;
       case 'category-detail':
-        return selectedCategory ? <CategoryDetailView /> : categories.length === 0 ? null : <NotFoundPage />;
+        // Categories are local/static, so selectedCategory is resolved by the
+        // route-sync effect immediately after mount. Avoid a one-frame 404.
+        return selectedCategory ? <CategoryDetailView /> : null;
       case 'shop-detail':
         // Shop data is remote. During the initial refresh selectedShop is
         // temporarily null, so wait for the collection before deciding that
