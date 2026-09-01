@@ -1,6 +1,7 @@
 import { Product } from '../models/Product.js';
 import { Shop } from '../models/Shop.js';
 import { Market } from '../models/Market.js';
+import { firestore } from '../config/firebase.js';
 import { ok, fail } from '../utils/apiResponse.js';
 
 const publicFilter = { status: 'published' };
@@ -89,9 +90,52 @@ export const updateProductStatus = async (req, res) => {
 };
 
 export const deleteProduct = async (req, res) => {
-  const product = await Product.findById(req.params.id);
-  if (!product) return fail(res, 'Product not found.', 404);
-  if (req.user.role !== 'admin' && product.sellerId.toString() !== req.user._id.toString()) return fail(res, 'You can only delete your own products.', 403);
-  await product.deleteOne();
-  return ok(res, { deleted: true });
+  const productId = String(req.params.id || '');
+  const firebaseUid = String(req.firebaseUser?.uid || '');
+  let firestoreDeleted = false;
+
+  // The live marketplace product catalog is stored in Firestore. Delete it
+  // server-side after verifying ownership so stale/mis-deployed client rules
+  // cannot block a legitimate seller action.
+  try {
+    const db = firestore();
+    const ref = db.collection('products').doc(productId);
+    const snapshot = await ref.get();
+    if (snapshot.exists) {
+      const data = snapshot.data() || {};
+      const sellerId = String(data.sellerId || '');
+      const shopId = String(data.shopId || '');
+      let ownerId = sellerId;
+
+      if (shopId) {
+        const shopSnapshot = await db.collection('shops').doc(shopId).get();
+        if (shopSnapshot.exists) ownerId = String(shopSnapshot.data()?.ownerId || sellerId);
+      }
+
+      if (req.user.role !== 'admin' && ownerId !== firebaseUid && sellerId !== firebaseUid) {
+        return fail(res, 'You can only delete your own products.', 403);
+      }
+
+      await ref.delete();
+      firestoreDeleted = true;
+    }
+  } catch (error) {
+    console.error('Firestore product deletion failed:', error);
+    return fail(res, 'Unable to delete the product from the marketplace catalog.', 500);
+  }
+
+  // Preserve compatibility with older Mongo-backed products.
+  if (/^[a-f\d]{24}$/i.test(productId)) {
+    const product = await Product.findById(productId).catch(() => null);
+    if (product) {
+      if (req.user.role !== 'admin' && product.sellerId.toString() !== req.user._id.toString()) {
+        return fail(res, 'You can only delete your own products.', 403);
+      }
+      await product.deleteOne();
+      return ok(res, { deleted: true, firestore: firestoreDeleted, mongo: true });
+    }
+  }
+
+  if (firestoreDeleted) return ok(res, { deleted: true, firestore: true });
+  return fail(res, 'Product not found.', 404);
 };
