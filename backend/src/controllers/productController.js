@@ -94,9 +94,6 @@ export const deleteProduct = async (req, res) => {
   const firebaseUid = String(req.firebaseUser?.uid || '');
   let firestoreDeleted = false;
 
-  // The live marketplace product catalog is stored in Firestore. Delete it
-  // server-side after verifying ownership so stale/mis-deployed client rules
-  // cannot block a legitimate seller action.
   try {
     const db = firestore();
     const ref = db.collection('products').doc(productId);
@@ -105,14 +102,13 @@ export const deleteProduct = async (req, res) => {
       const data = snapshot.data() || {};
       const sellerId = String(data.sellerId || '');
       const shopId = String(data.shopId || '');
-      let ownerId = sellerId;
+      const shopSnapshot = shopId ? await db.collection('shops').doc(shopId).get() : null;
+      const ownerId = String(shopSnapshot?.data()?.ownerId || sellerId);
+      const userSnapshot = await db.collection('users').doc(firebaseUid).get();
+      const role = String(userSnapshot.data()?.role || '');
 
-      if (shopId) {
-        const shopSnapshot = await db.collection('shops').doc(shopId).get();
-        if (shopSnapshot.exists) ownerId = String(shopSnapshot.data()?.ownerId || sellerId);
-      }
-
-      if (req.user.role !== 'admin' && ownerId !== firebaseUid && sellerId !== firebaseUid) {
+      if (role !== 'admin' && role !== 'seller') return fail(res, 'Seller permission is required to delete products.', 403);
+      if (role !== 'admin' && ownerId !== firebaseUid && sellerId !== firebaseUid) {
         return fail(res, 'You can only delete your own products.', 403);
       }
 
@@ -124,13 +120,11 @@ export const deleteProduct = async (req, res) => {
     return fail(res, 'Unable to delete the product from the marketplace catalog.', 500);
   }
 
-  // Preserve compatibility with older Mongo-backed products.
+  // Preserve compatibility with older Mongo-backed products when the id is a Mongo ObjectId.
   if (/^[a-f\d]{24}$/i.test(productId)) {
     const product = await Product.findById(productId).catch(() => null);
     if (product) {
-      if (req.user.role !== 'admin' && product.sellerId.toString() !== req.user._id.toString()) {
-        return fail(res, 'You can only delete your own products.', 403);
-      }
+      if (product.sellerId.toString() !== firebaseUid) return fail(res, 'You can only delete your own products.', 403);
       await product.deleteOne();
       return ok(res, { deleted: true, firestore: firestoreDeleted, mongo: true });
     }
