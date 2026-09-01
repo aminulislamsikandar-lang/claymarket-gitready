@@ -6,6 +6,19 @@ import { Shop } from '../types';
 export const BrowseByShops: React.FC = () => {
   const { filteredShops, navigateTo } = useApp();
 
+  // A seller must have one public shop. Older data may contain duplicate
+  // shop documents for the same owner, so collapse those duplicates here.
+  const uniqueShops = Array.from(
+    filteredShops.reduce((map, shop) => {
+      const key = shop.ownerId?.trim() ? `owner:${shop.ownerId}` : `shop:${shop.id}`;
+      const existing = map.get(key);
+      if (!existing || (shop.id.startsWith('shop_') && !existing.id.startsWith('shop_'))) {
+        map.set(key, shop);
+      }
+      return map;
+    }, new Map<string, Shop>()).values(),
+  );
+
   const getShopIcon = (shop: Shop) => {
     if (shop.categoryId === 'cat_slippers') {
       return <Footprints className="w-4 h-4" />;
@@ -37,13 +50,13 @@ export const BrowseByShops: React.FC = () => {
       </div>
 
       {/* Grid of Compact Shop Cards — dense 3-up grid on mobile (Amazon/Flipkart style), unchanged on desktop */}
-      {filteredShops.length === 0 ? (
+      {uniqueShops.length === 0 ? (
         <div className="py-10 text-center bg-white/60 rounded-2xl border border-dashed border-gray-200">
           <p className="text-sm text-[#737B89] font-medium">No shops available yet. Please check back soon.</p>
         </div>
       ) : (
       <div className="grid grid-cols-3 sm:grid-cols-2 lg:grid-cols-5 gap-2 sm:gap-4">
-        {filteredShops.slice(0, 5).map((shop: Shop) => (
+        {uniqueShops.slice(0, 5).map((shop: Shop) => (
           <div
             key={shop.id}
             id={`shop-card-${shop.id}`}
