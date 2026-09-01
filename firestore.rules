@@ -78,10 +78,15 @@ service cloud.firestore {
         && request.resource.data.shopId is string
         && get(/databases/$(database)/documents/shops/$(request.resource.data.shopId)).data.ownerId == request.auth.uid;
 
-      allow update, delete: if signedIn()
+      // Updates have request.resource; deletes do not. Keep these rules separate
+      // so an owner can delete their own product without a false permission denial.
+      allow update: if signedIn()
         && resource.data.sellerId == request.auth.uid
         && request.resource.data.sellerId == request.auth.uid
         && request.resource.data.shopId == resource.data.shopId;
+
+      allow delete: if signedIn()
+        && resource.data.sellerId == request.auth.uid;
     }
 
     // Buyer/seller transactional data is written through the authenticated
