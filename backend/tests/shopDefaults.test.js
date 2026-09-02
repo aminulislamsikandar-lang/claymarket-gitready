@@ -22,7 +22,7 @@ test('fresh seller shop defaults contain no trust signals or images', () => {
   assert.equal(persisted.coverImage, '');
 });
 
-test('client-supplied trust/image fields cannot override creation defaults', () => {
+test('client-supplied trust/image fields cannot override seller creation defaults', () => {
   const persisted = applyCleanNewShopDefaults({
     name: 'Test Shop',
     rating: 4.9,
@@ -51,4 +51,21 @@ test('client-supplied trust/image fields cannot override creation defaults', () 
       coverImage: '',
     },
   );
+});
+
+test('admin may explicitly supply shop metadata', () => {
+  const adminShop = {
+    profileImage: 'https://res.cloudinary.com/example/image/upload/v1/admin.jpg',
+    coverImage: 'https://res.cloudinary.com/example/image/upload/v1/banner.jpg',
+    rating: 4.8,
+    reviewsCount: 30,
+    verified: true,
+    followersCount: 200,
+  };
+
+  assert.equal(adminShop.verified, true);
+  assert.equal(adminShop.rating, 4.8);
+  assert.equal(adminShop.reviewsCount, 30);
+  assert.equal(adminShop.profileImage.includes('res.cloudinary.com'), true);
+  assert.equal(adminShop.coverImage.includes('res.cloudinary.com'), true);
 });
