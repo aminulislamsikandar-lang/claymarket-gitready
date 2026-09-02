@@ -40,7 +40,6 @@ export const createShop = async (req, res) => {
   if (req.user.role !== 'seller' && req.user.role !== 'admin') return fail(res, 'Seller access required.', 403);
   if (typeof onlineOrdering !== 'boolean') return fail(res, 'onlineOrdering must be true or false.');
 
-  // Seller-created shops get trust/image defaults from the server, never from client input.
   if (req.user.role === 'seller') {
     const existingShops = await Shop.find({ ownerId: req.user._id }).limit(1);
     if (existingShops.length) return fail(res, 'You already have a shop. Each seller can have only one shop.', 409);
@@ -51,7 +50,8 @@ export const createShop = async (req, res) => {
   const slugBase = name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   const slug = `${slugBase}-${Date.now()}`;
   const market = await Market.findById(marketId);
-  const shop = await Shop.create(applyCleanNewShopDefaults({
+
+  const basePayload = {
     ownerId: req.user._id,
     name,
     slug,
@@ -65,7 +65,22 @@ export const createShop = async (req, res) => {
     address: String(address).trim(),
     hours,
     onlineOrdering,
-  }));
+  };
+
+  // Only authenticated admins may explicitly supply trust/media fields.
+  const createPayload = req.user.role === 'admin'
+    ? {
+        ...basePayload,
+        profileImage: String(body.profileImage || '').trim(),
+        coverImage: String(body.coverImage || '').trim(),
+        rating: Number.isFinite(Number(body.rating)) ? Number(body.rating) : 0,
+        reviewsCount: Number.isFinite(Number(body.reviewsCount)) ? Number(body.reviewsCount) : 0,
+        verified: Boolean(body.verified),
+        followersCount: Number.isFinite(Number(body.followersCount)) ? Number(body.followersCount) : 0,
+      }
+    : applyCleanNewShopDefaults(basePayload);
+
+  const shop = await Shop.create(createPayload);
   return ok(res, await shop.populate('marketId', 'name slug'), 201);
 };
 
