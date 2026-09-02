@@ -21,7 +21,7 @@ export const getShop = async (req, res) => {
 };
 
 export const createShop = async (req, res) => {
-  const { name, marketId, categoryIds = [], profileImage = '', coverImage = '', description = '', phone = '', address = '', hours = {}, state = '', district = '' } = req.body || {};
+  const { name, marketId, categoryIds = [], profileImage = '', coverImage = '', description = '', phone = '', address = '', hours = {}, state = '', district = '', rating, reviewsCount, verified, followersCount } = req.body || {};
   if (!name || !marketId) return fail(res, 'Shop name and market are required.');
   if (req.user.role !== 'seller' && req.user.role !== 'admin') return fail(res, 'Seller access required.', 403);
   if (!await Market.exists({ _id: marketId })) return fail(res, 'Market not found.', 404);
@@ -29,7 +29,8 @@ export const createShop = async (req, res) => {
   const slugBase = name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   const slug = `${slugBase}-${Date.now()}`;
   const market = await Market.findById(marketId);
-  const shop = await Shop.create({ ownerId: req.user._id, name, slug, marketId, marketName: market?.name || '', state: String(state).trim(), district: String(district).trim(), categoryIds, profileImage, coverImage, description, phone, address, hours });
+  const isAdmin = req.user.role === 'admin';
+  const shop = await Shop.create({ ownerId: req.user._id, name, slug, marketId, marketName: market?.name || '', state: String(state).trim(), district: String(district).trim(), categoryIds, profileImage: isAdmin ? String(profileImage || '').trim() : '', coverImage: isAdmin ? String(coverImage || '').trim() : '', rating: isAdmin && Number.isFinite(Number(rating)) ? Number(rating) : 0, reviewsCount: isAdmin && Number.isFinite(Number(reviewsCount)) ? Number(reviewsCount) : 0, verified: isAdmin ? Boolean(verified) : false, followersCount: isAdmin && Number.isFinite(Number(followersCount)) ? Number(followersCount) : 0, description, phone, address, hours });
   return ok(res, await shop.populate('marketId', 'name slug'), 201);
 };
 
