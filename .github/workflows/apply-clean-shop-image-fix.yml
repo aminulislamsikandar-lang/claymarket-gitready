@@ -1,0 +1,57 @@
+name: Apply clean shop image fix
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply minimal fix
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('src/context/AppContext.tsx')
+          s = p.read_text()
+          replacements = [
+            ("avatar: String(raw.profileImage || raw.avatar || 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=500&auto=format&fit=crop&q=80'),", "avatar: cleanShopImageUrl(raw.profileImage || raw.avatar),"),
+            ("banner: String(raw.coverImage || raw.banner || raw.profileImage || 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1000&auto=format&fit=crop&q=80'),", "banner: cleanShopImageUrl(raw.coverImage || raw.banner || raw.profileImage),"),
+            ("profileImage: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=500&auto=format&fit=crop&q=80', coverImage: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1000&auto=format&fit=crop&q=80',", "profileImage: '', coverImage: '',"),
+            ("const DEFAULT_AVATAR = 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=500&auto=format&fit=crop&q=80'; const DEFAULT_BANNER = 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1000&auto=format&fit=crop&q=80';", "const DEFAULT_AVATAR = ''; const DEFAULT_BANNER = '';")
+          ]
+          helper = "const cleanShopImageUrl = (value: unknown): string => {\n      const url = String(value || '').trim();\n      if (!url) return '';\n      return url.startsWith('https://res.cloudinary.com/') ? url : '';\n    };\n\n    "
+          if 'const cleanShopImageUrl' not in s:
+            s = s.replace("const mapFirestoreShop = (raw: any, id: string): Shop => {", helper + "const mapFirestoreShop = (raw: any, id: string): Shop => {")
+          for old, new in replacements:
+            s = s.replace(old, new)
+          p.write_text(s)
+
+          p = Path('src/components/AuthModal.tsx')
+          s = p.read_text()
+          s = s.replace("profileImage: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=500&auto=format&fit=crop&q=80',\n      coverImage: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1000&auto=format&fit=crop&q=80',", "profileImage: '',\n      coverImage: '',")
+          p.write_text(s)
+
+          p = Path('backend/src/controllers/shopController.js')
+          s = p.read_text()
+          s = s.replace("const { name, marketId, categoryIds = [], profileImage = '', coverImage = '', description = '', phone = '', address = '', hours = {}, state = '', district = '' } = req.body || {};", "const { name, marketId, categoryIds = [], profileImage = '', coverImage = '', description = '', phone = '', address = '', hours = {}, state = '', district = '', rating, reviewsCount, verified, followersCount } = req.body || {};")
+          old = "const shop = await Shop.create({ ownerId: req.user._id, name, slug, marketId, marketName: market?.name || '', state: String(state).trim(), district: String(district).trim(), categoryIds, profileImage, coverImage, description, phone, address, hours });"
+          new = "const isAdmin = req.user.role === 'admin';\n  const shop = await Shop.create({ ownerId: req.user._id, name, slug, marketId, marketName: market?.name || '', state: String(state).trim(), district: String(district).trim(), categoryIds, profileImage: isAdmin ? String(profileImage || '').trim() : '', coverImage: isAdmin ? String(coverImage || '').trim() : '', rating: isAdmin && Number.isFinite(Number(rating)) ? Number(rating) : 0, reviewsCount: isAdmin && Number.isFinite(Number(reviewsCount)) ? Number(reviewsCount) : 0, verified: isAdmin ? Boolean(verified) : false, followersCount: isAdmin && Number.isFinite(Number(followersCount)) ? Number(followersCount) : 0, description, phone, address, hours });"
+          if old not in s: raise SystemExit('shop create line not found')
+          s = s.replace(old, new)
+          p.write_text(s)
+
+      - name: Commit and remove workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/context/AppContext.tsx src/components/AuthModal.tsx backend/src/controllers/shopController.js .github/workflows/apply-clean-shop-image-fix.yml
+          git rm .github/workflows/apply-clean-shop-image-fix.yml
+          git commit -m "fix: prevent demo images on new shops while preserving features"
+          git push origin HEAD:main
