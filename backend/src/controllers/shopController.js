@@ -3,6 +3,7 @@ import { Category } from '../models/Category.js';
 import { Shop } from '../models/Shop.js';
 import { Product } from '../models/Product.js';
 import { ok, fail } from '../utils/apiResponse.js';
+import { applyCleanNewShopDefaults } from '../utils/cleanShopDefaults.js';
 
 const MAX_SEARCH_LENGTH = 80;
 const MAX_PAGE_SIZE = 50;
@@ -50,7 +51,7 @@ export const createShop = async (req, res) => {
   const slugBase = name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   const slug = `${slugBase}-${Date.now()}`;
   const market = await Market.findById(marketId);
-  const shop = await Shop.create({
+  const shop = await Shop.create(applyCleanNewShopDefaults({
     ownerId: req.user._id,
     name,
     slug,
@@ -59,18 +60,12 @@ export const createShop = async (req, res) => {
     state: String(state).trim(),
     district: String(district).trim(),
     categoryIds,
-    profileImage: '',
-    coverImage: '',
     description,
     phone: String(phone).trim(),
     address: String(address).trim(),
     hours,
     onlineOrdering,
-    rating: 0,
-    reviewsCount: 0,
-    verified: false,
-    followersCount: 0,
-  });
+  }));
   return ok(res, await shop.populate('marketId', 'name slug'), 201);
 };
 
@@ -101,7 +96,6 @@ export const deleteShop = async (req, res) => {
   if (!shop) return fail(res, 'Shop not found.', 404);
   if (req.user.role !== 'admin' && shop.ownerId.toString() !== req.user._id.toString()) return fail(res, 'You can only delete your own shop.', 403);
 
-  // Remove products first so no public product remains attached to a deleted shop.
   await Product.deleteMany({ shopId: shop._id });
   await shop.deleteOne();
   return ok(res, { deleted: true });
