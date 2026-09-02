@@ -67,7 +67,8 @@ export const createShop = async (req, res) => {
     onlineOrdering,
   };
 
-  // Only authenticated admins may explicitly supply trust/media fields.
+  // Seller-created shops cannot set trust/media metadata from the client.
+  // Authenticated admins may explicitly supply these fields.
   const createPayload = req.user.role === 'admin'
     ? {
         ...basePayload,
