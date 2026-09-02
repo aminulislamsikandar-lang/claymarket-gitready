@@ -74,7 +74,27 @@ export async function register(req, res) {
       const category = await resolveCategory(shop.categoryId || shop.categoryName);
       if (!category) throw new Error('Selected category could not be found.');
       const slugBase = shop.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `shop-${Date.now()}`;
-      createdShop = await Shop.create({ ownerId: user._id, name: shop.name.trim(), slug: `${slugBase}-${Date.now()}`, marketId: market._id, marketName: market.name, state: shop.state.trim(), district: shop.district.trim(), categoryIds: [category._id], description: shop.description || '', phone: String(shop.phone || phone || '').trim(), address: String(shop.address || '').trim() });
+      createdShop = await Shop.create({
+        ownerId: user._id,
+        name: shop.name.trim(),
+        slug: `${slugBase}-${Date.now()}`,
+        marketId: market._id,
+        marketName: market.name,
+        state: shop.state.trim(),
+        district: shop.district.trim(),
+        categoryIds: [category._id],
+        profileImage: '',
+        coverImage: '',
+        description: String(shop.description || '').trim(),
+        phone: String(shop.phone || phone || '').trim(),
+        address: String(shop.address || '').trim(),
+        hours: {},
+        onlineOrdering: false,
+        rating: 0,
+        reviewsCount: 0,
+        verified: false,
+        followersCount: 0,
+      });
     }
   } catch (error) {
     if (user) await User.findByIdAndDelete(user._id);
