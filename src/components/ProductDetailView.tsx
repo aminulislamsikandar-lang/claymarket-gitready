@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { 
   ArrowLeft, ChevronRight, Heart, ShoppingBag, MessageSquare, 
   Store, CheckCircle2, ShieldCheck, Truck, Star, 
-  Minus, Plus, Phone, UserCheck, ArrowRight, Share2
+  Minus, Plus, Phone, UserCheck, ArrowRight, Share2, X, ZoomIn
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { shareOrCopy } from '../utils/share';
@@ -26,6 +26,7 @@ export const ProductDetailView: React.FC = () => {
   const [selectedSize, setSelectedSize] = useState<string>(product.sizes?.[0] || '8');
   const [selectedColor, setSelectedColor] = useState<string>(defaultColorName);
   const [quantity, setQuantity] = useState(1);
+  const [isImageZoomed, setIsImageZoomed] = useState(false);
 
   const stockKnown = product.stockCount !== undefined && product.stockCount !== null;
   const stockAvailable = stockKnown ? product.stockCount! : 999;
@@ -112,15 +113,24 @@ export const ProductDetailView: React.FC = () => {
           {/* LEFT: Image Gallery */}
           <div className="lg:col-span-6 space-y-4">
             <div className="relative w-full aspect-square rounded-3xl overflow-hidden bg-gray-100 border border-gray-100 shadow-inner">
-              <img 
-                src={product.images[selectedImageIndex] || product.images[0]} 
-                alt={product.name} 
-                className="w-full h-full object-cover"
-              />
-              
-              {/* Discount Badge */}
+              <button
+                type="button"
+                onClick={() => setIsImageZoomed(true)}
+                aria-label="Zoom product image"
+                className="absolute inset-0 z-10 w-full h-full cursor-zoom-in group"
+              >
+                <img 
+                  src={product.images[selectedImageIndex] || product.images[0]} 
+                  alt={product.name} 
+                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+                />
+                <span className="absolute bottom-4 left-1/2 -translate-x-1/2 inline-flex items-center gap-2 rounded-full bg-black/60 text-white px-4 py-2 text-xs font-bold backdrop-blur-sm opacity-90">
+                  <ZoomIn className="w-4 h-4" />
+                  Click to zoom
+                </span>
+              </button>
               {discountPercent > 0 && (
-                <div className="absolute top-4 left-4 px-3 py-1 bg-[#8067E8] text-white rounded-full text-xs font-bold shadow-md">
+                <div className="absolute top-4 left-4 z-20 px-3 py-1 bg-[#8067E8] text-white rounded-full text-xs font-bold shadow-md pointer-events-none">
                   {discountPercent}% OFF
                 </div>
               )}
@@ -128,7 +138,7 @@ export const ProductDetailView: React.FC = () => {
               {/* Wishlist Button */}
               <button
                 onClick={() => toggleWishlist(product.id)}
-                className={`absolute top-4 right-4 p-3 rounded-full backdrop-blur-md transition-all shadow-md ${
+                className={`absolute top-4 right-4 z-20 p-3 rounded-full backdrop-blur-md transition-all shadow-md ${
                   isWishlisted(product.id)
                     ? 'bg-[#FF6B8B] text-white'
                     : 'bg-white/80 text-gray-700 hover:bg-white'
@@ -422,7 +432,31 @@ export const ProductDetailView: React.FC = () => {
         </div>
       </div>
 
+      {isImageZoomed && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 sm:p-8"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Product image viewer"
+          onClick={() => setIsImageZoomed(false)}
+        >
+          <button
+            type="button"
+            onClick={() => setIsImageZoomed(false)}
+            aria-label="Close image viewer"
+            className="absolute top-4 right-4 z-[102] p-3 rounded-full bg-white/15 hover:bg-white/25 text-white transition-colors"
+          >
+            <X className="w-6 h-6" />
+          </button>
+          <img
+            src={product.images[selectedImageIndex] || product.images[0]}
+            alt={`${product.name} enlarged`}
+            className="max-w-full max-h-[92vh] w-auto h-auto object-contain rounded-xl shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          />
+        </div>
+      )}
+
     </div>
   );
 };
-
