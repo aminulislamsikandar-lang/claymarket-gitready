@@ -278,7 +278,7 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ isOpen, onClos
             onClose();
             navigateTo('notifications');
           }}
-          className="w-full flex items-center gap-3.5 px-3 py-2 rounded-xl hover:bg-gray-50 text-[#20243A] text-sm font-medium transition-colors text-left"
+          className="w-full flex items-center gap-3.5 px-3 py-2 rounded-xl hover:bg-gray-50 text-[#737B89] text-sm font-medium transition-colors text-left"
         >
           <Bell className="w-4 h-4 text-[#737B89]" />
           <span>Notifications</span>
@@ -313,28 +313,30 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ isOpen, onClos
           // Seller Account Options (Aminul)
           <div className="space-y-1">
             <button
-    id="dropdown-my-shop-btn"
-    onClick={() => {
-      onClose();
-      const myShop = shops.find((shop) => shop.id === currentUser.shopId);
-      if (!myShop) {
-        showToast('Your shop is still loading. Please try again.', 'info');
-        return;
-      }
-      navigateTo('shop-detail', { shop: myShop });
-    }}
-    className="w-full flex items-start gap-3.5 p-2.5 rounded-2xl bg-[#FAF8FE] hover:bg-[#F3EEFE] transition-colors text-left group"
-  >
-    <div className="w-8 h-8 rounded-xl bg-[#DDD4FF] text-[#6C4DE6] flex items-center justify-center shrink-0 mt-0.5">
-      <Store className="w-4 h-4" />
-    </div>
-    <div className="flex-1 min-w-0">
-      <p className="text-sm font-bold text-[#20243A]">My Shop</p>
-      <p className="text-xs text-[#8067E8] font-semibold truncate">
-        {currentUser.shopName || 'My Shop'}
-      </p>
-    </div>
-  </button>
+              id="dropdown-my-shop-btn"
+              onClick={() => {
+                onClose();
+                const myShop = shops.find((shop) => shop.id === currentUser.shopId);
+                if (!myShop) {
+                  showToast('Your shop is still loading. Please try again.', 'info');
+                  return;
+                }
+                // Use the same canonical URL as the shop opened from Browse by Shops.
+                // The URL is intentionally not rendered in the UI; this remains a button.
+                window.location.assign(`/shops/${encodeURIComponent(myShop.id)}`);
+              }}
+              className="w-full flex items-start gap-3.5 p-2.5 rounded-2xl bg-[#FAF8FE] hover:bg-[#F3EEFE] transition-colors text-left group"
+            >
+              <div className="w-8 h-8 rounded-xl bg-[#DDD4FF] text-[#6C4DE6] flex items-center justify-center shrink-0 mt-0.5">
+                <Store className="w-4 h-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-[#20243A]">My Shop</p>
+                <p className="text-xs text-[#8067E8] font-semibold truncate">
+                  {currentUser.shopName || 'My Shop'}
+                </p>
+              </div>
+            </button>
 
             <button
               id="dropdown-seller-dashboard-btn"
