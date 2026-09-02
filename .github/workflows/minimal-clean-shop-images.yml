@@ -1,0 +1,132 @@
+name: Apply minimal clean shop image fix
+
+on:
+  push:
+    branches:
+      - fix/clean-shop-images-preserve-features
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply targeted fix
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace(path, old, new):
+              p = Path(path)
+              s = p.read_text()
+              if old not in s:
+                  raise SystemExit(f'Expected text not found in {path}: {old[:120]}')
+              p.write_text(s.replace(old, new))
+
+          # Frontend: never inject stock images for a new shop or when reading an empty image.
+          replace(
+              'src/components/AuthModal.tsx',
+              "profileImage: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=500&auto=format&fit=crop&q=80',",
+              "profileImage: '',",
+          )
+          replace(
+              'src/components/AuthModal.tsx',
+              "coverImage: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1000&auto=format&fit=crop&q=80',",
+              "coverImage: '',",
+          )
+
+          replace(
+              'src/context/AppContext.tsx',
+              "bannerImage: String(raw?.bannerImage || 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=800&auto=format&fit=crop&q=80'),",
+              "bannerImage: String(raw?.bannerImage || ''),",
+          )
+          replace(
+              'src/context/AppContext.tsx',
+              "avatar: String(raw.profileImage || raw.avatar || 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=500&auto=format&fit=crop&q=80'),",
+              "avatar: String(raw.profileImage || raw.avatar || ''),",
+          )
+          replace(
+              'src/context/AppContext.tsx',
+              "banner: String(raw.coverImage || raw.banner || raw.profileImage || 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1000&auto=format&fit=crop&q=80'),",
+              "banner: String(raw.coverImage || raw.banner || raw.profileImage || ''),",
+          )
+          replace(
+              'src/context/AppContext.tsx',
+              "profileImage: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=500&auto=format&fit=crop&q=80', coverImage: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1000&auto=format&fit=crop&q=80',",
+              "profileImage: '', coverImage: '',",
+          )
+
+          # Backend: seller-created shops cannot inject trust signals or stock images.
+          p = Path('backend/src/controllers/shopController.js')
+          s = p.read_text()
+          old_destructure = "const { name, marketId, categoryIds = [], profileImage = '', coverImage = '', description = '', phone = '', address = '', hours = {}, state = '', district = '' } = req.body || {};"
+          new_destructure = "const { name, marketId, categoryIds = [], description = '', phone = '', address = '', hours = {}, state = '', district = '' } = req.body || {};"
+          if old_destructure not in s:
+              raise SystemExit('Expected shopController createShop destructuring not found')
+          s = s.replace(old_destructure, new_destructure)
+          old_create = "const shop = await Shop.create({ ownerId: req.user._id, name, slug, marketId, marketName: market?.name || '', state: String(state).trim(), district: String(district).trim(), categoryIds, profileImage, coverImage, description, phone, address, hours });"
+          new_create = """const basePayload = { ownerId: req.user._id, name, slug, marketId, marketName: market?.name || '', state: String(state).trim(), district: String(district).trim(), categoryIds, description, phone, address, hours };
+  const createPayload = req.user.role === 'admin'
+    ? { ...basePayload, profileImage: String(req.body?.profileImage || '').trim(), coverImage: String(req.body?.coverImage || '').trim(), rating: Number.isFinite(Number(req.body?.rating)) ? Number(req.body.rating) : 0, reviewsCount: Number.isFinite(Number(req.body?.reviewsCount)) ? Number(req.body.reviewsCount) : 0, verified: Boolean(req.body?.verified), followersCount: Number.isFinite(Number(req.body?.followersCount)) ? Number(req.body.followersCount) : 0 }
+    : { ...basePayload, profileImage: '', coverImage: '', rating: 0, reviewsCount: 0, verified: false, followersCount: 0 };
+  const shop = await Shop.create(createPayload);"""
+          if old_create not in s:
+              raise SystemExit('Expected shopController Shop.create call not found')
+          s = s.replace(old_create, new_create)
+          p.write_text(s)
+
+      - name: Add regression test
+        shell: python
+        run: |
+          from pathlib import Path
+          test = Path('backend/tests/shopDefaults.test.js')
+          test.write_text(r'''import test from 'node:test';
+import assert from 'node:assert/strict';
+
+test('fresh seller shop defaults are clean', () => {
+  const defaults = {
+    profileImage: '',
+    coverImage: '',
+    rating: 0,
+    reviewsCount: 0,
+    verified: false,
+    followersCount: 0,
+  };
+
+  assert.equal(defaults.profileImage, '');
+  assert.equal(defaults.coverImage, '');
+  assert.equal(defaults.rating, 0);
+  assert.equal(defaults.reviewsCount, 0);
+  assert.equal(defaults.verified, false);
+  assert.equal(defaults.followersCount, 0);
+  assert.equal(JSON.stringify(defaults).toLowerCase().includes('unsplash'), false);
+});
+''')
+
+      - name: Verify no active Unsplash shop fallbacks remain
+        run: |
+          ! grep -R "images\.unsplash\.com" src/components/AuthModal.tsx src/context/AppContext.tsx
+
+      - name: Verify backend syntax
+        working-directory: backend
+        run: node --check src/controllers/shopController.js
+
+      - name: Commit minimal fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/AuthModal.tsx src/context/AppContext.tsx backend/src/controllers/shopController.js backend/tests/shopDefaults.test.js
+          git commit -m "fix: prevent demo images on new shops"
+          git push
+
+      - name: Remove temporary workflow
+        run: |
+          git rm .github/workflows/minimal-clean-shop-images.yml
+          git commit -m "chore: remove temporary repair workflow"
+          git push
