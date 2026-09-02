@@ -16,7 +16,7 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ isOpen, onClos
   const { 
     currentUser, logoutUser, navigateTo, 
     setIsAuthModalOpen, setAuthModalTab, wishlist, conversations,
-    setIsMessagesOpen
+    setIsMessagesOpen, shops, showToast
   } = useApp();
 
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -313,43 +313,28 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ isOpen, onClos
           // Seller Account Options (Aminul)
           <div className="space-y-1">
             <button
-              id="dropdown-my-shop-btn"
-              onClick={() => {
-                onClose();
-                navigateTo('shop-detail', { 
-                  shop: {
-                    id: currentUser.shopId || 'shop_aminul',
-                    name: currentUser.shopName || 'Aminul Slipper Shop',
-                    marketId: 'mkt_kachumara',
-                    marketName: 'Kachumara Market',
-                    categoryId: 'cat_slippers',
-                    categoryName: 'Slippers',
-                    avatar: 'https://images.unsplash.com/photo-1549298916-b41d501d3772?w=500&auto=format&fit=crop&q=80',
-                    banner: 'https://images.unsplash.com/photo-1560769629-975ec94e6a86?w=1000&auto=format&fit=crop&q=80',
-                    rating: 4.9,
-                    reviewsCount: 128,
-                    verified: true,
-                    followersCount: 420,
-                    about: 'Serving Kachumara Market for over 12 years with durable comfort slippers and daily footwear.',
-                    phone: '+91 94350 87654',
-                    address: 'Stall #14, Footwear Alley, Kachumara Market',
-                    ownerId: currentUser.id,
-                    ownerName: currentUser.name,
-                  }
-                });
-              }}
-              className="w-full flex items-start gap-3.5 p-2.5 rounded-2xl bg-[#FAF8FE] hover:bg-[#F3EEFE] transition-colors text-left group"
-            >
-              <div className="w-8 h-8 rounded-xl bg-[#DDD4FF] text-[#6C4DE6] flex items-center justify-center shrink-0 mt-0.5">
-                <Store className="w-4 h-4" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-[#20243A]">My Shop</p>
-                <p className="text-xs text-[#8067E8] font-semibold truncate">
-                  {currentUser.shopName || 'Aminul Slipper Shop'}
-                </p>
-              </div>
-            </button>
+    id="dropdown-my-shop-btn"
+    onClick={() => {
+      onClose();
+      const myShop = shops.find((shop) => shop.id === currentUser.shopId);
+      if (!myShop) {
+        showToast('Your shop is still loading. Please try again.', 'info');
+        return;
+      }
+      navigateTo('shop-detail', { shop: myShop });
+    }}
+    className="w-full flex items-start gap-3.5 p-2.5 rounded-2xl bg-[#FAF8FE] hover:bg-[#F3EEFE] transition-colors text-left group"
+  >
+    <div className="w-8 h-8 rounded-xl bg-[#DDD4FF] text-[#6C4DE6] flex items-center justify-center shrink-0 mt-0.5">
+      <Store className="w-4 h-4" />
+    </div>
+    <div className="flex-1 min-w-0">
+      <p className="text-sm font-bold text-[#20243A]">My Shop</p>
+      <p className="text-xs text-[#8067E8] font-semibold truncate">
+        {currentUser.shopName || 'My Shop'}
+      </p>
+    </div>
+  </button>
 
             <button
               id="dropdown-seller-dashboard-btn"
