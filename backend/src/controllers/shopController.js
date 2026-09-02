@@ -33,14 +33,13 @@ export const getShop = async (req, res) => {
 };
 
 export const createShop = async (req, res) => {
-  const { name, marketId, categoryIds = [], profileImage = '', coverImage = '', description = '', phone = '', address = '', hours = {}, state = '', district = '', onlineOrdering = false } = req.body || {};
+  const body = req.body || {};
+  const { name, marketId, categoryIds = [], description = '', phone = '', address = '', hours = {}, state = '', district = '', onlineOrdering = false } = body;
   if (!name || !marketId) return fail(res, 'Shop name and market are required.');
   if (req.user.role !== 'seller' && req.user.role !== 'admin') return fail(res, 'Seller access required.', 403);
   if (typeof onlineOrdering !== 'boolean') return fail(res, 'onlineOrdering must be true or false.');
 
-  // A Claymarket seller owns exactly one shop. The older API allowed a new
-  // Firestore document to be created on every request, which could produce
-  // multiple shops for the same Firebase user. Refuse duplicate creation.
+  // Seller-created shops get trust/image defaults from the server, never from client input.
   if (req.user.role === 'seller') {
     const existingShops = await Shop.find({ ownerId: req.user._id }).limit(1);
     if (existingShops.length) return fail(res, 'You already have a shop. Each seller can have only one shop.', 409);
@@ -51,7 +50,27 @@ export const createShop = async (req, res) => {
   const slugBase = name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   const slug = `${slugBase}-${Date.now()}`;
   const market = await Market.findById(marketId);
-  const shop = await Shop.create({ ownerId: req.user._id, name, slug, marketId, marketName: market?.name || '', state: String(state).trim(), district: String(district).trim(), categoryIds, profileImage, coverImage, description, phone, address, hours, onlineOrdering });
+  const shop = await Shop.create({
+    ownerId: req.user._id,
+    name,
+    slug,
+    marketId,
+    marketName: market?.name || '',
+    state: String(state).trim(),
+    district: String(district).trim(),
+    categoryIds,
+    profileImage: '',
+    coverImage: '',
+    description,
+    phone: String(phone).trim(),
+    address: String(address).trim(),
+    hours,
+    onlineOrdering,
+    rating: 0,
+    reviewsCount: 0,
+    verified: false,
+    followersCount: 0,
+  });
   return ok(res, await shop.populate('marketId', 'name slug'), 201);
 };
 
