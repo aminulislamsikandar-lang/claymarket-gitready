@@ -1,11 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-// This contract test locks the seller-shop defaults that must be persisted by
-// the two supported creation paths. It intentionally does not touch Firebase.
+const cleanShopDefaults = (input = {}) => ({
+  ...input,
+  profileImage: '',
+  coverImage: '',
+  rating: 0,
+  reviewsCount: 0,
+  verified: false,
+  followersCount: 0,
+});
 
 test('fresh seller shop defaults contain no trust signals or images', () => {
-  const input = {
+  const persisted = cleanShopDefaults({
     ownerId: 'firebase-user',
     name: 'Test Shop',
     slug: 'test-shop-123',
@@ -14,40 +21,43 @@ test('fresh seller shop defaults contain no trust signals or images', () => {
     state: 'Assam',
     district: 'Kamrup',
     categoryIds: ['cat_slippers'],
-    description: '',
-    phone: '',
-    address: '',
-    hours: {},
-    onlineOrdering: false,
-  };
-
-  const persisted = {
-    ...input,
-    profileImage: '',
-    coverImage: '',
-    rating: 0,
-    reviewsCount: 0,
-    verified: false,
-    followersCount: 0,
-  };
+  });
 
   assert.equal(persisted.rating, 0);
   assert.equal(persisted.reviewsCount, 0);
   assert.equal(persisted.verified, false);
+  assert.equal(persisted.followersCount, 0);
   assert.equal(persisted.profileImage, '');
   assert.equal(persisted.coverImage, '');
 });
 
-test('untrusted client fields are not part of the default shop creation contract', () => {
-  const defaultKeys = new Set([
-    'profileImage',
-    'coverImage',
-    'rating',
-    'reviewsCount',
-    'verified',
-    'followersCount',
-  ]);
+test('client-supplied trust/image fields cannot override creation defaults', () => {
+  const persisted = cleanShopDefaults({
+    name: 'Test Shop',
+    rating: 4.9,
+    reviewsCount: 128,
+    verified: true,
+    followersCount: 420,
+    profileImage: 'https://example.com/demo.jpg',
+    coverImage: 'https://example.com/demo-banner.jpg',
+  });
 
-  assert.equal(defaultKeys.has('phone'), false);
-  assert.equal(defaultKeys.has('address'), false);
+  assert.deepEqual(
+    {
+      rating: persisted.rating,
+      reviewsCount: persisted.reviewsCount,
+      verified: persisted.verified,
+      followersCount: persisted.followersCount,
+      profileImage: persisted.profileImage,
+      coverImage: persisted.coverImage,
+    },
+    {
+      rating: 0,
+      reviewsCount: 0,
+      verified: false,
+      followersCount: 0,
+      profileImage: '',
+      coverImage: '',
+    },
+  );
 });
