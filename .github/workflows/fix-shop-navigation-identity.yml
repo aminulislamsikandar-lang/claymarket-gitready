@@ -1,0 +1,83 @@
+name: Apply minimal shop identity navigation fix
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch only shop identity fallbacks
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          p = Path('src/components/AccountDropdown.tsx')
+          s = p.read_text()
+
+          old_import = """    currentUser, logoutUser, navigateTo, \n    setIsAuthModalOpen, setAuthModalTab, wishlist, conversations,\n    setIsMessagesOpen\n  } = useApp();"""
+          new_import = """    currentUser, logoutUser, navigateTo, \n    setIsAuthModalOpen, setAuthModalTab, wishlist, conversations,\n    setIsMessagesOpen, shops, showToast\n  } = useApp();"""
+          if old_import not in s:
+              raise SystemExit('AccountDropdown useApp block not found')
+          s = s.replace(old_import, new_import, 1)
+
+          pattern = r'''<button\n\s+id="dropdown-my-shop-btn"\n\s+onClick=\{\(\) => \{.*?\n\s+</button>'''
+          replacement = '''<button
+              id="dropdown-my-shop-btn"
+              onClick={() => {
+                onClose();
+                const myShop = shops.find((shop) => shop.id === currentUser.shopId);
+                if (!myShop) {
+                  showToast('Your shop is still loading. Please try again.', 'info');
+                  return;
+                }
+                navigateTo('shop-detail', { shop: myShop });
+              }}
+              className="w-full flex items-start gap-3.5 p-2.5 rounded-2xl bg-[#FAF8FE] hover:bg-[#F3EEFE] transition-colors text-left group"
+            >
+              <div className="w-8 h-8 rounded-xl bg-[#DDD4FF] text-[#6C4DE6] flex items-center justify-center shrink-0 mt-0.5">
+                <Store className="w-4 h-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-[#20243A]">My Shop</p>
+                <p className="text-xs text-[#8067E8] font-semibold truncate">
+                  {currentUser.shopName || 'My Shop'}
+                </p>
+              </div>
+            </button>'''
+          s2, count = re.subn(pattern, replacement, s, count=1, flags=re.S)
+          if count != 1:
+              raise SystemExit('My Shop button block not found')
+          p.write_text(s2)
+
+          # Remove the remaining seller-only legacy shop-id fallback without changing behavior for valid sellers.
+          p = Path('src/components/SellerDashboardView.tsx')
+          s = p.read_text()
+          old = "  const shopId = currentUser.shopId || 'shop_aminul';"
+          new = "  const shopId = currentUser.shopId || '';"
+          if old in s:
+              s = s.replace(old, new, 1)
+          old = "              const shop = shops.find(s => s.id === shopId) || shops[0] || EMPTY_SHOP_FALLBACK;"
+          new = "              const shop = shops.find(s => s.id === shopId) || EMPTY_SHOP_FALLBACK;"
+          if old in s:
+              s = s.replace(old, new, 1)
+          p.write_text(s)
+
+      - name: Commit patch and remove workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/AccountDropdown.tsx src/components/SellerDashboardView.tsx .github/workflows/fix-shop-navigation-identity.yml
+          git rm .github/workflows/fix-shop-navigation-identity.yml
+          git commit -m "fix: use canonical shop for My Shop navigation"
+          git push origin HEAD:main
