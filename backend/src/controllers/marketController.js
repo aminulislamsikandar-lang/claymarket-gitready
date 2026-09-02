@@ -1,20 +1,25 @@
 import { Market } from '../models/Market.js';
 import { Shop } from '../models/Shop.js';
-import { User } from '../models/User.js';
 import { ok } from '../utils/apiResponse.js';
 
-// A market is publicly discoverable only when it has at least one shop
-// owned by a real seller account. This keeps seeded/demo-only markets out
-// of the marketplace without deleting legitimate market documents.
-const getActiveMarketIds = async () => {
-  const sellerUsers = await User.find({ role: 'seller' });
-  if (!sellerUsers.length) return [];
+// Public markets must be backed by a real shop. Do not depend on the seller
+// profile's role field here: legacy data and older onboarding flows can leave
+// a legitimate shop while the corresponding user profile is stale. The shop
+// itself is the source of truth for whether a market has marketplace content.
+// Known historical demo fixtures are excluded explicitly so this does not
+// bring seeded/demo-only markets back into the public UI.
+const LEGACY_MARKET_IDS = new Set(['mkt_kachumara']);
+const LEGACY_SHOP_IDS = new Set(['shop_aminul']);
 
-  const sellerIds = new Set(sellerUsers.map(user => String(user._id)));
+const getActiveMarketIds = async () => {
   const shops = await Shop.find({});
   return [...new Set(
     shops
-      .filter(shop => sellerIds.has(String(shop.ownerId)))
+      .filter(shop => {
+        const shopId = String(shop._id || '');
+        const marketId = String(shop.marketId || '');
+        return Boolean(marketId) && !LEGACY_SHOP_IDS.has(shopId) && !LEGACY_MARKET_IDS.has(marketId);
+      })
       .map(shop => String(shop.marketId))
       .filter(Boolean),
   )];
