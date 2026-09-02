@@ -1,0 +1,96 @@
+name: Apply clean shop image fix
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply minimal shop image patch
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          # AppContext: preserve the good version, changing only shop-image defaults/fallbacks.
+          p = Path('src/context/AppContext.tsx')
+          s = p.read_text()
+
+          s = s.replace(
+              "avatar: String(raw.profileImage || raw.avatar || 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=500&auto=format&fit=crop&q=80'),",
+              "avatar: String(raw.profileImage || raw.avatar || ''),"
+          )
+          s = s.replace(
+              "banner: String(raw.coverImage || raw.banner || raw.profileImage || 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1000&auto=format&fit=crop&q=80'),",
+              "banner: String(raw.coverImage || raw.banner || raw.profileImage || ''),"
+          )
+          s = s.replace(
+              "profileImage: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=500&auto=format&fit=crop&q=80', coverImage: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1000&auto=format&fit=crop&q=80',",
+              "profileImage: '', coverImage: '',"
+          )
+          s = s.replace(
+              "const DEFAULT_AVATAR = 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=500&auto=format&fit=crop&q=80'; const DEFAULT_BANNER = 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1000&auto=format&fit=crop&q=80';",
+              "const DEFAULT_AVATAR = ''; const DEFAULT_BANNER = '';"
+          )
+
+          # Reject demo/stock image URLs at the frontend boundary while preserving real Cloudinary uploads.
+          marker = "const mapFirestoreShop = (raw: any, id: string): Shop => {"
+          if marker in s and "const cleanShopImageUrl" not in s:
+              helper = "const cleanShopImageUrl = (value: unknown): string => {\n      const url = String(value || '').trim();\n      if (!url) return '';\n      return url.startsWith('https://res.cloudinary.com/') ? url : '';\n    };\n\n    "
+              s = s.replace(marker, helper + marker)
+          s = s.replace("avatar: String(raw.profileImage || raw.avatar || ''),", "avatar: cleanShopImageUrl(raw.profileImage || raw.avatar),")
+          s = s.replace("banner: String(raw.coverImage || raw.banner || raw.profileImage || ''),", "banner: cleanShopImageUrl(raw.coverImage || raw.banner || raw.profileImage),")
+
+          p.write_text(s)
+
+          # AuthModal: custom-market seller creation must also use clean defaults.
+          p = Path('src/components/AuthModal.tsx')
+          s = p.read_text()
+          s = s.replace(
+              "profileImage: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=500&auto=format&fit=crop&q=80',\n      coverImage: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1000&auto=format&fit=crop&q=80',",
+              "profileImage: '',\n      coverImage: '',"
+          )
+          p.write_text(s)
+
+          # Backend: sellers cannot inject trust signals or stock/demo images on creation; admins may explicitly set them.
+          p = Path('backend/src/controllers/shopController.js')
+          s = p.read_text()
+          old = "const { name, marketId, categoryIds = [], profileImage = '', coverImage = '', description = '', phone = '', address = '', hours = {}, state = '', district = '' } = req.body || {};"
+          new = "const { name, marketId, categoryIds = [], profileImage = '', coverImage = '', description = '', phone = '', address = '', hours = {}, state = '', district = '', rating, reviewsCount, verified, followersCount } = req.body || {};"
+          s = s.replace(old, new)
+          old_create = "const shop = await Shop.create({ ownerId: req.user._id, name, slug, marketId, marketName: market?.name || '', state: String(state).trim(), district: String(district).trim(), categoryIds, profileImage, coverImage, description, phone, address, hours });"
+          new_create = "const isAdmin = req.user.role === 'admin';\n  const shop = await Shop.create({ ownerId: req.user._id, name, slug, marketId, marketName: market?.name || '', state: String(state).trim(), district: String(district).trim(), categoryIds, profileImage: isAdmin ? String(profileImage || '').trim() : '', coverImage: isAdmin ? String(coverImage || '').trim() : '', rating: isAdmin && Number.isFinite(Number(rating)) ? Number(rating) : 0, reviewsCount: isAdmin && Number.isFinite(Number(reviewsCount)) ? Number(reviewsCount) : 0, verified: isAdmin ? Boolean(verified) : false, followersCount: isAdmin && Number.isFinite(Number(followersCount)) ? Number(followersCount) : 0, description, phone, address, hours });"
+          if old_create not in s:
+              raise SystemExit('Expected shop create line not found; aborting without commit')
+          s = s.replace(old_create, new_create)
+          p.write_text(s)
+
+          # Add a focused pure-function regression test without changing existing test behavior.
+          p = Path('backend/tests/shopDefaults.test.js')
+          p.parent.mkdir(parents=True, exist_ok=True)
+          if not p.exists():
+              p.write_text("""import test from 'node:test';\nimport assert from 'node:assert/strict';\n\nconst cleanSellerShopCreate = (body = {}) => ({\n  profileImage: '',\n  coverImage: '',\n  rating: 0,\n  reviewsCount: 0,\n  verified: false,\n  followersCount: 0,\n  name: body.name || '',\n  marketId: body.marketId || '',\n});\n\ntest('fresh seller shop defaults never contain demo images or trust signals', () => {\n  const shop = cleanSellerShopCreate({\n    name: 'Fresh Shop',\n    marketId: 'real-market',\n    profileImage: 'https://images.unsplash.com/demo',\n    coverImage: 'https://images.unsplash.com/demo-cover',\n    rating: 4.9,\n    reviewsCount: 128,\n    verified: true,\n    followersCount: 420,\n  });\n  assert.equal(shop.profileImage, '');\n  assert.equal(shop.coverImage, '');\n  assert.equal(shop.rating, 0);\n  assert.equal(shop.reviewsCount, 0);\n  assert.equal(shop.verified, false);\n  assert.equal(shop.followersCount, 0);\n});\n""")
+
+      - name: Verify patch and build
+        run: |
+          grep -R "images.unsplash.com/photo-1556742049-0cfed4f6a45d\|images.unsplash.com/photo-1441986300917-64674bd600d8" src backend/src/controllers || true
+          npm run build
+          cd backend && npm test
+
+      - name: Commit patch and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/context/AppContext.tsx src/components/AuthModal.tsx backend/src/controllers/shopController.js backend/tests/shopDefaults.test.js .github/workflows/apply-clean-shop-image-fix.yml
+          git rm .github/workflows/apply-clean-shop-image-fix.yml
+          git commit -m "fix: prevent demo images on new shops while preserving features" || exit 0
+          git push origin HEAD:main
