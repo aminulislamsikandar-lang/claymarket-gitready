@@ -3,6 +3,7 @@ import { User } from '../models/User.js';
 import { Shop } from '../models/Shop.js';
 import { Market } from '../models/Market.js';
 import { Category } from '../models/Category.js';
+import { applyCleanNewShopDefaults } from '../utils/cleanShopDefaults.js';
 import { ok, fail } from '../utils/apiResponse.js';
 
 function normalizeEmail(email) { return String(email || '').trim().toLowerCase(); }
@@ -28,7 +29,6 @@ async function resolveCategory(id) {
   return Category.findOne({ $or: [{ _id: value }, { slug }, { name: value }] });
 }
 
-// Creates Firebase Authentication credentials and the application profile in Firestore.
 export async function register(req, res) {
   const { name, email, password, phone = '', role = 'buyer', shop = null } = req.body || {};
   const normalizedEmail = normalizeEmail(email);
@@ -56,7 +56,6 @@ export async function register(req, res) {
   }
 
   let user;
-  let createdShop = null;
   try {
     const market = safeRole === 'seller' ? await resolveMarket(shop.marketId || shop.marketName) : null;
     if (safeRole === 'seller' && !market) throw new Error('Selected market could not be found.');
@@ -74,7 +73,7 @@ export async function register(req, res) {
       const category = await resolveCategory(shop.categoryId || shop.categoryName);
       if (!category) throw new Error('Selected category could not be found.');
       const slugBase = shop.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `shop-${Date.now()}`;
-      createdShop = await Shop.create({
+      await Shop.create(applyCleanNewShopDefaults({
         ownerId: user._id,
         name: shop.name.trim(),
         slug: `${slugBase}-${Date.now()}`,
@@ -83,18 +82,12 @@ export async function register(req, res) {
         state: shop.state.trim(),
         district: shop.district.trim(),
         categoryIds: [category._id],
-        profileImage: '',
-        coverImage: '',
         description: String(shop.description || '').trim(),
         phone: String(shop.phone || phone || '').trim(),
         address: String(shop.address || '').trim(),
         hours: {},
         onlineOrdering: false,
-        rating: 0,
-        reviewsCount: 0,
-        verified: false,
-        followersCount: 0,
-      });
+      }));
     }
   } catch (error) {
     if (user) await User.findByIdAndDelete(user._id);
@@ -105,7 +98,6 @@ export async function register(req, res) {
   return ok(res, { user: await publicUser(user), firebaseUid: firebaseUser.uid }, 201);
 }
 
-// Firebase Auth performs password verification on the client. This endpoint resolves a phone login to its email.
 export async function resolveLogin(req, res) {
   const identifier = String(req.body?.identifier || '').trim();
   if (!identifier) return fail(res, 'Email or phone is required.');
@@ -115,8 +107,5 @@ export async function resolveLogin(req, res) {
   return ok(res, { email: user.email });
 }
 
-// Called after the frontend signs in with Firebase and sends the Firebase ID token.
 export async function me(req, res) { return ok(res, { user: await publicUser(req.user) }); }
-
-// Kept for API compatibility; password verification belongs to Firebase Authentication.
 export async function login(req, res) { return fail(res, 'Use Firebase Authentication from the client to sign in.', 410); }
