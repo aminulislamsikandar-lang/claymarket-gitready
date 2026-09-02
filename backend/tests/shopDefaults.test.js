@@ -1,18 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-
-const cleanShopDefaults = (input = {}) => ({
-  ...input,
-  profileImage: '',
-  coverImage: '',
-  rating: 0,
-  reviewsCount: 0,
-  verified: false,
-  followersCount: 0,
-});
+import { applyCleanNewShopDefaults } from '../src/utils/cleanShopDefaults.js';
 
 test('fresh seller shop defaults contain no trust signals or images', () => {
-  const persisted = cleanShopDefaults({
+  const persisted = applyCleanNewShopDefaults({
     ownerId: 'firebase-user',
     name: 'Test Shop',
     slug: 'test-shop-123',
@@ -32,7 +23,7 @@ test('fresh seller shop defaults contain no trust signals or images', () => {
 });
 
 test('client-supplied trust/image fields cannot override creation defaults', () => {
-  const persisted = cleanShopDefaults({
+  const persisted = applyCleanNewShopDefaults({
     name: 'Test Shop',
     rating: 4.9,
     reviewsCount: 128,
