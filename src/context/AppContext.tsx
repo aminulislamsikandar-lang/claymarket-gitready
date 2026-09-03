@@ -683,7 +683,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       name: String(data?.name || firebaseUser.displayName || 'Claymarket User'),
       email: String(data?.email || firebaseUser.email || ''),
       phone: String(data?.phone || firebaseUser.phoneNumber || ''),
-      role: data?.role === 'seller' ? 'seller' : 'buyer',
+      role: data?.role === 'admin' ? 'admin' : data?.role === 'seller' ? 'seller' : 'buyer',
       avatar: String(data?.avatar || firebaseUser.photoURL || ''),
       addresses: Array.isArray(data?.addresses) ? data.addresses : [],
       shopId: data?.shopId ? String(data.shopId) : undefined,
@@ -733,7 +733,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { id: firebaseUser.uid, name: profile.name, email: profile.email, phone: profile.phone, role: profile.role, avatar: profile.avatar, addresses: profile.addresses };
     }
     const data = profileSnap.data();
-    return { id: firebaseUser.uid, name: String(data.name || firebaseUser.displayName || 'Claymarket User'), email: String(data.email || firebaseUser.email || ''), phone: String(data.phone || ''), role: data.role === 'seller' ? 'seller' : 'buyer', avatar: String(data.avatar || firebaseUser.photoURL || ''), addresses: Array.isArray(data.addresses) ? data.addresses : [], shopId: data.shopId ? String(data.shopId) : undefined, shopName: data.shopName ? String(data.shopName) : undefined, sellerLocation: data.sellerLocation ? { state: String(data.sellerLocation.state || ''), district: String(data.sellerLocation.district || ''), marketId: String(data.sellerLocation.marketId || ''), marketName: String(data.sellerLocation.marketName || '') } : undefined };
+    return { id: firebaseUser.uid, name: String(data.name || firebaseUser.displayName || 'Claymarket User'), email: String(data.email || firebaseUser.email || ''), phone: String(data.phone || ''), role: data.role === 'admin' ? 'admin' : data.role === 'seller' ? 'seller' : 'buyer', avatar: String(data.avatar || firebaseUser.photoURL || ''), addresses: Array.isArray(data.addresses) ? data.addresses : [], shopId: data.shopId ? String(data.shopId) : undefined, shopName: data.shopName ? String(data.shopName) : undefined, sellerLocation: data.sellerLocation ? { state: String(data.sellerLocation.state || ''), district: String(data.sellerLocation.district || ''), marketId: String(data.sellerLocation.marketId || ''), marketName: String(data.sellerLocation.marketName || '') } : undefined };
   };
 
   const finishFirebaseLogin = async (email: string, password: string, welcomeMessage = true) => {
