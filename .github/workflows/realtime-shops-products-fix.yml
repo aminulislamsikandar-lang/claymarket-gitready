@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - fix/market-autocomplete-seller
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -30,7 +33,6 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
-          import re
 
           path = Path('src/context/AppContext.tsx')
           text = path.read_text()
