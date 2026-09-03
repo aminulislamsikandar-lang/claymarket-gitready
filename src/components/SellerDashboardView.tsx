@@ -43,7 +43,7 @@ export const SellerDashboardView: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
 
-  const shopId = currentUser.shopId || 'shop_aminul';
+  const shopId = currentUser.shopId || '';
   const myProducts = products.filter(p => p.shopId === shopId);
   const myOrders = orders.filter(o => o.shopId === shopId);
 
@@ -165,7 +165,7 @@ export const SellerDashboardView: React.FC = () => {
         <div className="flex items-center gap-3">
           <button
             onClick={() => {
-              const shop = shops.find(s => s.id === shopId) || shops[0] || EMPTY_SHOP_FALLBACK;
+              const shop = shops.find(s => s.id === shopId) || EMPTY_SHOP_FALLBACK;
               navigateTo('shop-detail', { shop });
             }}
             className="px-4 py-2.5 rounded-full bg-[#FAF8FE] hover:bg-[#F1EDFD] text-[#8067E8] font-bold text-xs flex items-center gap-2 border border-[#DDD4FF] transition-colors cursor-pointer"

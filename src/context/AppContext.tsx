@@ -403,6 +403,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     let cancelled = false;
 
+    const cleanShopImageUrl = (value: unknown): string => {
+      const url = String(value || '').trim();
+      if (!url) return '';
+      return url.startsWith('https://res.cloudinary.com/') ? url : '';
+    };
+
     const mapFirestoreShop = (raw: any, id: string): Shop => {
       const categoryId = Array.isArray(raw.categoryIds) ? String(raw.categoryIds[0] || '') : String(raw.categoryId || '');
       const category = categories.find(c => c.id === categoryId);
@@ -415,8 +421,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         district: String(raw.district || ''),
         categoryId,
         categoryName: String(raw.categoryName || category?.name || 'Local Shop'),
-        avatar: String(raw.profileImage || raw.avatar || 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=500&auto=format&fit=crop&q=80'),
-        banner: String(raw.coverImage || raw.banner || raw.profileImage || 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1000&auto=format&fit=crop&q=80'),
+        avatar: cleanShopImageUrl(raw.profileImage || raw.avatar),
+        banner: cleanShopImageUrl(raw.coverImage || raw.banner || raw.profileImage),
         rating: Number(raw.rating || 0),
         reviewsCount: Number(raw.reviewsCount || 0),
         verified: Boolean(raw.verified),
@@ -781,7 +787,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const shopId = `shop_${firebaseUser.uid}`; const shopName = data.shop.name.trim();
       if (!shopName) throw new Error('Please enter a shop name.'); if (!data.shop.state.trim()) throw new Error('Please enter your state.'); if (!data.shop.district.trim()) throw new Error('Please enter your district.');
       if (firebaseUser.displayName !== data.name.trim()) await updateProfile(firebaseUser, { displayName: data.name.trim() });
-      const shopDoc = { ownerId: firebaseUser.uid, ownerName: data.name.trim(), name: shopName, slug: `${shopName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'local-shop'}-${Date.now()}`, marketId: selectedMarket.id, marketName: selectedMarket.name, state: data.shop.state.trim(), district: data.shop.district.trim(), categoryIds: [selectedCategory.id], categoryId: selectedCategory.id, categoryName: selectedCategory.name, profileImage: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=500&auto=format&fit=crop&q=80', coverImage: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1000&auto=format&fit=crop&q=80', description: '', phone: data.phone?.trim() || '', address: data.shop.address?.trim() || '', rating: 0, reviewsCount: 0, verified: false, followersCount: 0, createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
+      const shopDoc = { ownerId: firebaseUser.uid, ownerName: data.name.trim(), name: shopName, slug: `${shopName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'local-shop'}-${Date.now()}`, marketId: selectedMarket.id, marketName: selectedMarket.name, state: data.shop.state.trim(), district: data.shop.district.trim(), categoryIds: [selectedCategory.id], categoryId: selectedCategory.id, categoryName: selectedCategory.name, profileImage: '', coverImage: '', description: '', phone: data.phone?.trim() || '', address: data.shop.address?.trim() || '', rating: 0, reviewsCount: 0, verified: false, followersCount: 0, createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
       const userDoc = { name: data.name.trim(), email: firebaseUser.email || '', phone: data.phone?.trim() || '', role: 'seller', avatar: firebaseUser.photoURL || '', addresses: Array.isArray(currentUser.addresses) ? currentUser.addresses : [], shopId, shopName, sellerLocation: { state: data.shop.state.trim(), district: data.shop.district.trim(), marketId: selectedMarket.id, marketName: selectedMarket.name } };
       const batch = writeBatch(firebaseDb); batch.set(doc(firebaseDb, 'users', firebaseUser.uid), { ...userDoc, updatedAt: serverTimestamp() }, { merge: true }); batch.set(doc(firebaseDb, 'shops', shopId), shopDoc); await withTimeout(batch.commit(), 10000, 'Shop creation timed out. Please check your Firebase connection and try again.');
       setAuthToken(await withTimeout(firebaseUser.getIdToken(true), 8000, 'Shop created, but the session token could not be refreshed. Please refresh and try again.'));
@@ -897,7 +903,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateShopImages = async (shopId: string, updates: { avatarFile?: File | null; bannerFile?: File | null; removeAvatar?: boolean; removeBanner?: boolean }): Promise<boolean> => {
     const target = shops.find(s => s.id === shopId); if (!target) { showToast('Shop not found.', 'error'); return false; } if (currentUser.role !== 'seller' || currentUser.shopId !== shopId) { showToast('You are not allowed to edit this shop.', 'error'); return false; } if (!firebaseDb) { showToast('Firebase is not fully configured. Enable Firestore first.', 'error'); return false; }
-    const DEFAULT_AVATAR = 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=500&auto=format&fit=crop&q=80'; const DEFAULT_BANNER = 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1000&auto=format&fit=crop&q=80';
+    const DEFAULT_AVATAR = ''; const DEFAULT_BANNER = '';
     try { const fieldUpdate: Record<string, unknown> = {}; const shopUpdate: Partial<Shop> = {}; if (updates.avatarFile) { const validation = validateImageFile(updates.avatarFile); if (!validation.valid) { showToast(validation.error || 'Invalid image file.', 'error'); return false; } const url = await uploadToCloudinary(updates.avatarFile, `shops/${shopId}`); fieldUpdate.profileImage = url; shopUpdate.avatar = url; } else if (updates.removeAvatar) { fieldUpdate.profileImage = DEFAULT_AVATAR; shopUpdate.avatar = DEFAULT_AVATAR; } if (updates.bannerFile) { const validation = validateImageFile(updates.bannerFile); if (!validation.valid) { showToast(validation.error || 'Invalid image file.', 'error'); return false; } const url = await uploadToCloudinary(updates.bannerFile, `shops/${shopId}`); fieldUpdate.coverImage = url; shopUpdate.banner = url; } else if (updates.removeBanner) { fieldUpdate.coverImage = DEFAULT_BANNER; shopUpdate.banner = DEFAULT_BANNER; } if (!Object.keys(fieldUpdate).length) return false; fieldUpdate.updatedAt = serverTimestamp(); await updateDoc(doc(firebaseDb, 'shops', shopId), fieldUpdate); setShops(prev => prev.map(s => s.id === shopId ? { ...s, ...shopUpdate } : s)); showToast('Shop photo updated!', 'success'); return true; } catch (error) { showToast(error instanceof Error ? error.message : 'Unable to update shop photo.', 'error'); return false; }
   };
 

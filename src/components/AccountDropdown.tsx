@@ -16,7 +16,7 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ isOpen, onClos
   const { 
     currentUser, logoutUser, navigateTo, 
     setIsAuthModalOpen, setAuthModalTab, wishlist, conversations,
-    setIsMessagesOpen
+    setIsMessagesOpen, shops, showToast
   } = useApp();
 
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -278,7 +278,7 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ isOpen, onClos
             onClose();
             navigateTo('notifications');
           }}
-          className="w-full flex items-center gap-3.5 px-3 py-2 rounded-xl hover:bg-gray-50 text-[#20243A] text-sm font-medium transition-colors text-left"
+          className="w-full flex items-center gap-3.5 px-3 py-2 rounded-xl hover:bg-gray-50 text-[#737B89] text-sm font-medium transition-colors text-left"
         >
           <Bell className="w-4 h-4 text-[#737B89]" />
           <span>Notifications</span>
@@ -316,27 +316,14 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ isOpen, onClos
               id="dropdown-my-shop-btn"
               onClick={() => {
                 onClose();
-                navigateTo('shop-detail', { 
-                  shop: {
-                    id: currentUser.shopId || 'shop_aminul',
-                    name: currentUser.shopName || 'Aminul Slipper Shop',
-                    marketId: 'mkt_kachumara',
-                    marketName: 'Kachumara Market',
-                    categoryId: 'cat_slippers',
-                    categoryName: 'Slippers',
-                    avatar: 'https://images.unsplash.com/photo-1549298916-b41d501d3772?w=500&auto=format&fit=crop&q=80',
-                    banner: 'https://images.unsplash.com/photo-1560769629-975ec94e6a86?w=1000&auto=format&fit=crop&q=80',
-                    rating: 4.9,
-                    reviewsCount: 128,
-                    verified: true,
-                    followersCount: 420,
-                    about: 'Serving Kachumara Market for over 12 years with durable comfort slippers and daily footwear.',
-                    phone: '+91 94350 87654',
-                    address: 'Stall #14, Footwear Alley, Kachumara Market',
-                    ownerId: currentUser.id,
-                    ownerName: currentUser.name,
-                  }
-                });
+                const myShop = shops.find((shop) => shop.id === currentUser.shopId);
+                if (!myShop) {
+                  showToast('Your shop is still loading. Please try again.', 'info');
+                  return;
+                }
+                // Use the same canonical URL as the shop opened from Browse by Shops.
+                // The URL is intentionally not rendered in the UI; this remains a button.
+                window.location.assign(`/shops/${encodeURIComponent(myShop.id)}`);
               }}
               className="w-full flex items-start gap-3.5 p-2.5 rounded-2xl bg-[#FAF8FE] hover:bg-[#F3EEFE] transition-colors text-left group"
             >
@@ -346,7 +333,7 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ isOpen, onClos
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold text-[#20243A]">My Shop</p>
                 <p className="text-xs text-[#8067E8] font-semibold truncate">
-                  {currentUser.shopName || 'Aminul Slipper Shop'}
+                  {currentUser.shopName || 'My Shop'}
                 </p>
               </div>
             </button>
