@@ -907,8 +907,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const created = await apiRequest<any>('/orders', { method: 'POST', body: JSON.stringify(payload) }); createdOrders.push(mapBackendOrder(created, shops));
       }
     } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Could not place the order. Please try again.', 'error');
-      if (createdOrders.length) { const orderedShopIds = new Set(createdOrders.map(o => o.shopId)); setCart(prev => prev.filter(item => !orderedShopIds.has(item.product.shopId))); setOrders(prev => [...createdOrders, ...prev]); void fetchOrders(); }
+      const failureMessage = error instanceof Error ? error.message : 'Could not place the order. Please try again.';
+      if (createdOrders.length) {
+        // At least one shop's order went through before this one failed —
+        // say so explicitly instead of a generic error, so the buyer
+        // doesn't think nothing happened and doesn't retry the whole
+        // checkout (which could create a duplicate order for the shop(s)
+        // that already succeeded).
+        showToast(
+          `${createdOrders.length} order${createdOrders.length > 1 ? 's' : ''} placed, but the rest could not be completed: ${failureMessage} Please check your cart and orders.`,
+          'error'
+        );
+        const orderedShopIds = new Set(createdOrders.map(o => o.shopId)); setCart(prev => prev.filter(item => !orderedShopIds.has(item.product.shopId))); setOrders(prev => [...createdOrders, ...prev]); void fetchOrders();
+      } else {
+        showToast(failureMessage, 'error');
+      }
       return createdOrders[0] || null;
     }
     setOrders(prev => [...createdOrders, ...prev]); clearCart(); showToast(`${createdOrders.length} order${createdOrders.length > 1 ? 's' : ''} placed successfully!`, 'success'); void fetchOrders(); return createdOrders[0] || null;
