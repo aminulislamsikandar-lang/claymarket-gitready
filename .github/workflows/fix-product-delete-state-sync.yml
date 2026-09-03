@@ -6,7 +6,7 @@ on:
       - fix/market-autocomplete-seller
 
 jobs:
-  fix:
+  verify-and-cleanup:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -15,45 +15,17 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Fix ShopProfileView delete flow
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          p = Path('src/components/ShopProfileView.tsx')
-          s = p.read_text()
-          s = s.replace("import { apiRequest } from '../utils/api';\n", '')
-          old_destructure = "showToast, updateShopImages, addShopCategory, updateShopCategory, deleteShopCategory"
-          new_destructure = "showToast, updateShopImages, addShopCategory, updateShopCategory, deleteShopCategory, deleteProduct"
-          if old_destructure not in s: raise SystemExit('Could not find AppContext destructuring target')
-          s = s.replace(old_destructure, new_destructure, 1)
-          old_state = "  const [locallyDeletedProductIds, setLocallyDeletedProductIds] = useState<Set<string>>(new Set());\n"
-          if old_state not in s: raise SystemExit('Could not find locallyDeletedProductIds state')
-          s = s.replace(old_state, '', 1)
-          old_filter = "const shopProducts = products.filter(p => p.shopId === shop.id && p.status !== 'hidden' && !locallyDeletedProductIds.has(p.id));"
-          new_filter = "const shopProducts = products.filter(p => p.shopId === shop.id && p.status !== 'hidden');"
-          if old_filter not in s: raise SystemExit('Could not find shopProducts filter')
-          s = s.replace(old_filter, new_filter, 1)
-          old_handler = "await apiRequest(`/products/${encodeURIComponent(product.id)}`, { method: 'DELETE' }); setLocallyDeletedProductIds(prev => new Set([...prev, product.id])); showToast('Product deleted from your shop.', 'success');"
-          new_handler = "await deleteProduct(product.id);"
-          if old_handler not in s: raise SystemExit('Could not find direct API delete handler')
-          s = s.replace(old_handler, new_handler, 1)
-          p.write_text(s)
-          PY
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Type-check and capture result
-        run: |
-          set +e
-          npx tsc --noEmit > /tmp/tsc-output.txt 2>&1
-          status=$?
-          cat /tmp/tsc-output.txt
-          cp /tmp/tsc-output.txt tsc-product-delete-check.txt
-          echo "TSC_EXIT_CODE=$status" >> tsc-product-delete-check.txt
-          exit 0
+      - name: Type-check
+        run: npx tsc --noEmit
 
-      - name: Commit diagnostic
+      - name: Commit fix and remove temporary files
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/components/ShopProfileView.tsx tsc-product-delete-check.txt .github/workflows/fix-product-delete-state-sync.yml
-          git commit -m "chore: capture product delete typecheck result"
+          git rm tsc-product-delete-check.txt .github/workflows/fix-product-delete-state-sync.yml
+          git add src/components/ShopProfileView.tsx
+          git commit -m "fix: sync product deletion from shop profile"
           git push
