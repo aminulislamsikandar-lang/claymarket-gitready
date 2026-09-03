@@ -265,7 +265,7 @@ export const AddEditProductModal: React.FC<AddEditProductModalProps> = ({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-bold text-[#20243A] block mb-1">
-                Category <span className="text-gray-400 font-normal text-[11px]">(optional)</span>
+                Marketplace Category <span className="text-gray-400 font-normal text-[11px]">(optional — where buyers browsing the whole marketplace will find this)</span>
               </label>
               <select
                 id="seller-product-category-select"
@@ -274,12 +274,9 @@ export const AddEditProductModal: React.FC<AddEditProductModalProps> = ({
                 className="w-full px-3.5 py-2.5 rounded-xl bg-[#F7F5F3] border border-gray-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#8067E8] transition-all"
               >
                 <option value="">Select Category (Optional)</option>
-                <option value="cat_slippers">Slippers & Footwear</option>
-                <option value="cat_clothes">Traditional Clothes & Handloom</option>
-                <option value="cat_produce">Fresh Vegetables & Fruits</option>
-                <option value="cat_spices">Local Spices & Grains</option>
-                <option value="cat_crafts">Bamboo & Cane Crafts</option>
-                <option value="cat_fish">Local Fishery</option>
+                {categories.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
               </select>
             </div>
             <div>
@@ -301,7 +298,7 @@ export const AddEditProductModal: React.FC<AddEditProductModalProps> = ({
           {shopCategoryOptions.length > 0 && (
             <div>
               <label className="text-xs font-bold text-[#20243A] block mb-1">
-                Shop Category <span className="text-gray-400 font-normal text-[11px]">(optional — group this item within your shop)</span>
+                My Shop's Own Category <span className="text-gray-400 font-normal text-[11px]">(optional — a section only within your shop page, e.g. Men's / Women's / Kids')</span>
               </label>
               <select
                 id="seller-product-shopcategory-select"
