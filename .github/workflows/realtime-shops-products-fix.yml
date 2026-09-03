@@ -1,0 +1,109 @@
+name: Verify realtime shops and products fix
+
+on:
+  push:
+    branches:
+      - fix/market-autocomplete-seller
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply Firestore realtime listeners fix
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          path = Path('src/context/AppContext.tsx')
+          text = path.read_text()
+
+          if '  onSnapshot,\n' not in text:
+              text = text.replace('  getDocs,\n', '  getDocs,\n  onSnapshot,\n', 1)
+
+          text = text.replace("  useEffect(() => {\n    let cancelled = false;\n", "  useEffect(() => {\n", 1)
+
+          start_marker = "    const loadRemoteData = async () => {"
+          end_marker = "  }, [markets, categories]);"
+          start = text.index(start_marker)
+          end = text.index(end_marker, start) + len(end_marker)
+
+          replacement = '''    if (firebaseConfigured && firebaseDb) {
+      const unsubscribeShops = onSnapshot(
+        collection(firebaseDb, 'shops'),
+        (snapshot) => {
+          const remoteShops = snapshot.docs.map(docSnapshot =>
+            mapFirestoreShop(docSnapshot.data(), docSnapshot.id),
+          );
+          setShops(remoteShops);
+        },
+      );
+
+      const unsubscribeProducts = onSnapshot(
+        query(collection(firebaseDb, 'products'), where('status', '==', 'published')),
+        (snapshot) => {
+          const remoteProducts = snapshot.docs.map(docSnapshot =>
+            mapFirestoreProduct(docSnapshot.data(), docSnapshot.id),
+          );
+          setProducts(remoteProducts);
+        },
+      );
+
+      return () => {
+        unsubscribeShops();
+        unsubscribeProducts();
+      };
+    }
+
+    const loadRemoteData = async () => {
+      try {
+        const result = await apiRequest<any[]>('/shops');
+        if (!Array.isArray(result)) return;
+        const remote = result.map((raw: any): Shop => mapFirestoreShop({
+          ...raw,
+          marketId: raw.marketId?._id || raw.marketId,
+          categoryIds: Array.isArray(raw.categoryIds) ? raw.categoryIds.map((c: any) => c?._id || c) : [],
+          ownerId: raw.ownerId?._id || raw.ownerId,
+          ownerName: raw.ownerId?.name || '',
+        }, String(raw._id || raw.id)));
+        setShops(remote);
+      } catch {
+        // Leave marketplace collections empty on initial failure; a later fetch can recover.
+      }
+    };
+
+    void loadRemoteData();
+  }, [markets, categories]);'''
+
+          text = text[:start] + replacement + text[end:]
+          path.write_text(text)
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Commit verified source fix and remove temporary workflow
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .github/workflows/realtime-shops-products-fix.yml
+          git add src/context/AppContext.tsx .github/workflows/realtime-shops-products-fix.yml
+          git commit -m "fix: sync shops and published products in real time"
+          git push origin HEAD:fix/market-autocomplete-seller
