@@ -1,0 +1,59 @@
+name: Fix product delete state sync
+
+on:
+  push:
+    branches:
+      - fix/market-autocomplete-seller
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fix ShopProfileView delete flow
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/components/ShopProfileView.tsx')
+          s = p.read_text()
+          old_import = "import { apiRequest } from '../utils/api';\n"
+          s = s.replace(old_import, '')
+          old_destructure = "showToast, updateShopImages, addShopCategory, updateShopCategory, deleteShopCategory"
+          new_destructure = "showToast, updateShopImages, addShopCategory, updateShopCategory, deleteShopCategory, deleteProduct"
+          if old_destructure not in s:
+              raise SystemExit('Could not find AppContext destructuring target')
+          s = s.replace(old_destructure, new_destructure, 1)
+          old_state = "  const [locallyDeletedProductIds, setLocallyDeletedProductIds] = useState<Set<string>>(new Set());\n"
+          if old_state not in s:
+              raise SystemExit('Could not find locallyDeletedProductIds state')
+          s = s.replace(old_state, '', 1)
+          old_filter = "const shopProducts = products.filter(p => p.shopId === shop.id && p.status !== 'hidden' && !locallyDeletedProductIds.has(p.id));"
+          new_filter = "const shopProducts = products.filter(p => p.shopId === shop.id && p.status !== 'hidden');"
+          if old_filter not in s:
+              raise SystemExit('Could not find shopProducts filter')
+          s = s.replace(old_filter, new_filter, 1)
+          old_handler = "await apiRequest(`/products/${encodeURIComponent(product.id)}`, { method: 'DELETE' }); setLocallyDeletedProductIds(prev => new Set([...prev, product.id])); showToast('Product deleted from your shop.', 'success');"
+          new_handler = "await deleteProduct(product.id);"
+          if old_handler not in s:
+              raise SystemExit('Could not find direct API delete handler')
+          s = s.replace(old_handler, new_handler, 1)
+          p.write_text(s)
+          PY
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Commit fix and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/ShopProfileView.tsx .github/workflows/fix-product-delete-state-sync.yml
+          git commit -m "fix: sync product deletion from shop profile"
+          git rm .github/workflows/fix-product-delete-state-sync.yml
+          git commit -m "chore: remove temporary product delete fixer"
+          git push
