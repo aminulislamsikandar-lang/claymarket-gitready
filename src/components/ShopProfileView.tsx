@@ -7,12 +7,11 @@ import { AddEditProductModal } from './AddEditProductModal';
 import { EditShopDetailsModal } from './EditShopDetailsModal';
 import { CategoryPhotoManager } from './CategoryPhotoManager';
 import { EMPTY_SHOP_FALLBACK } from '../utils/fallbacks';
-import { apiRequest } from '../utils/api';
 
 type CategoryWithPhotos = ShopProductCategory & { images?: string[] };
 
 export const ShopProfileView: React.FC = () => {
-  const { currentUser, selectedShop, shops, products, markets, categories, navigateTo, goBack, toggleWishlist, isWishlisted, addToCart, startChatWithShop, toggleFollowShop, isFollowingShop, showToast, updateShopImages, addShopCategory, updateShopCategory, deleteShopCategory } = useApp();
+  const { currentUser, selectedShop, shops, products, markets, categories, navigateTo, goBack, toggleWishlist, isWishlisted, addToCart, startChatWithShop, toggleFollowShop, isFollowingShop, showToast, updateShopImages, addShopCategory, updateShopCategory, deleteShopCategory, deleteProduct } = useApp();
   const [activeTab, setActiveTab] = useState<'products' | 'reviews' | 'photos' | 'about'>('products');
   const [productCategoryFilter, setProductCategoryFilter] = useState<string>('all');
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
@@ -20,7 +19,6 @@ export const ShopProfileView: React.FC = () => {
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [isUploadingBanner, setIsUploadingBanner] = useState(false);
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
-  const [locallyDeletedProductIds, setLocallyDeletedProductIds] = useState<Set<string>>(new Set());
   const [selectedPhotoCategory, setSelectedPhotoCategory] = useState<CategoryWithPhotos | null>(null);
   const [categoryPhotoOverrides, setCategoryPhotoOverrides] = useState<Record<string, string[]>>({});
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -31,7 +29,7 @@ export const ShopProfileView: React.FC = () => {
   const targetCategory = categories.find(c => c.id === shop.categoryId);
   const isFollowing = isFollowingShop(shop.id);
   const isOwnerSeller = currentUser.role === 'seller' && (currentUser.shopId === shop.id || shop.id === 'shop_aminul' || currentUser.id === 'user_aminul');
-  const shopProducts = products.filter(p => p.shopId === shop.id && p.status !== 'hidden' && !locallyDeletedProductIds.has(p.id));
+  const shopProducts = products.filter(p => p.shopId === shop.id && p.status !== 'hidden');
   const shopCategories: CategoryWithPhotos[] = (shop.productCategories || []).map(cat => ({ ...cat, images: categoryPhotoOverrides[cat.id] ?? (cat as CategoryWithPhotos).images ?? [] }));
   const filteredProducts = productCategoryFilter === 'all' ? shopProducts : shopProducts.filter(p => p.shopCategoryId === productCategoryFilter);
   const reviews = MOCK_REVIEWS[shop.id] || MOCK_REVIEWS['shop_aminul'];
@@ -51,7 +49,7 @@ export const ShopProfileView: React.FC = () => {
   const handleAddCategory = async () => { const name = window.prompt('New category name (e.g. "Men\'s Wear", "Kids Wear"):'); if (name !== null) await addShopCategory(shop.id, name); };
   const handleRenameCategory = async (categoryId: string, currentName: string) => { const name = window.prompt('Rename category:', currentName); if (name !== null) await updateShopCategory(shop.id, categoryId, name); };
   const handleDeleteCategory = async (categoryId: string, name: string) => { if (!window.confirm(`Remove category "${name}"? Products in it will become uncategorized.`)) return; if (productCategoryFilter === categoryId) setProductCategoryFilter('all'); await deleteShopCategory(shop.id, categoryId); };
-  const handleDeleteProduct = async (product: Product) => { if (!isOwnerSeller || !window.confirm(`Delete "${product.name}" from your shop? This will remove the entire product listing.`)) return; setDeletingProductId(product.id); try { await apiRequest(`/products/${encodeURIComponent(product.id)}`, { method: 'DELETE' }); setLocallyDeletedProductIds(prev => new Set([...prev, product.id])); showToast('Product deleted from your shop.', 'success'); } catch (error) { showToast(error instanceof Error ? error.message : 'Unable to delete the product. Please try again.', 'error'); } finally { setDeletingProductId(null); } };
+  const handleDeleteProduct = async (product: Product) => { if (!isOwnerSeller || !window.confirm(`Delete "${product.name}" from your shop? This will remove the entire product listing.`)) return; setDeletingProductId(product.id); try { await deleteProduct(product.id); } catch (error) { showToast(error instanceof Error ? error.message : 'Unable to delete the product. Please try again.', 'error'); } finally { setDeletingProductId(null); } };
   const openCategoryPhotos = (category: CategoryWithPhotos) => setSelectedPhotoCategory(category);
   const handleCategoryPhotosUpdated = (categoryId: string, images: string[]) => { setCategoryPhotoOverrides(prev => ({ ...prev, [categoryId]: images })); setSelectedPhotoCategory(prev => prev && prev.id === categoryId ? { ...prev, images } : prev); };
 
