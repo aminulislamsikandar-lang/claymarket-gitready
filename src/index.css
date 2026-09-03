@@ -177,3 +177,14 @@ img.claymarket-img-fallback {
   padding: 12%;
   background-color: #F0EEEA;
 }
+
+.shimmer-loading {
+  background: linear-gradient(90deg, #f1edfd 25%, #e2d9fb 37%, #f1edfd 63%);
+  background-size: 400% 100%;
+  animation: shimmer 1.4s ease infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}

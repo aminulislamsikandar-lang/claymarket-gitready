@@ -6,6 +6,7 @@ import { Shop, Product, ShopProductCategory } from '../types';
 import { AddEditProductModal } from './AddEditProductModal';
 import { EditShopDetailsModal } from './EditShopDetailsModal';
 import { CategoryPhotoManager } from './CategoryPhotoManager';
+import { ProductImageWithShimmer } from './ProductImageWithShimmer';
 import { EMPTY_SHOP_FALLBACK } from '../utils/fallbacks';
 import { apiRequest } from '../utils/api';
 
@@ -23,6 +24,8 @@ export const ShopProfileView: React.FC = () => {
   const [locallyDeletedProductIds, setLocallyDeletedProductIds] = useState<Set<string>>(new Set());
   const [selectedPhotoCategory, setSelectedPhotoCategory] = useState<CategoryWithPhotos | null>(null);
   const [categoryPhotoOverrides, setCategoryPhotoOverrides] = useState<Record<string, string[]>>({});
+  const [isProductsLoading, setIsProductsLoading] = useState(false);
+  const productsGridRef = useRef<HTMLDivElement>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
 
@@ -53,6 +56,13 @@ export const ShopProfileView: React.FC = () => {
   const handleDeleteCategory = async (categoryId: string, name: string) => { if (!window.confirm(`Remove category "${name}"? Products in it will become uncategorized.`)) return; if (productCategoryFilter === categoryId) setProductCategoryFilter('all'); await deleteShopCategory(shop.id, categoryId); };
   const handleDeleteProduct = async (product: Product) => { if (!isOwnerSeller || !window.confirm(`Delete "${product.name}" from your shop? This will remove the entire product listing.`)) return; setDeletingProductId(product.id); try { await apiRequest(`/products/${encodeURIComponent(product.id)}`, { method: 'DELETE' }); setLocallyDeletedProductIds(prev => new Set([...prev, product.id])); showToast('Product deleted from your shop.', 'success'); } catch (error) { showToast(error instanceof Error ? error.message : 'Unable to delete the product. Please try again.', 'error'); } finally { setDeletingProductId(null); } };
   const openCategoryPhotos = (category: CategoryWithPhotos) => setSelectedPhotoCategory(category);
+
+  const handleFilterChange = (categoryId: string) => {
+    setIsProductsLoading(true);
+    setProductCategoryFilter(categoryId);
+    requestAnimationFrame(() => productsGridRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    window.setTimeout(() => setIsProductsLoading(false), 550);
+  };
   const handleCategoryPhotosUpdated = (categoryId: string, images: string[]) => { setCategoryPhotoOverrides(prev => ({ ...prev, [categoryId]: images })); setSelectedPhotoCategory(prev => prev && prev.id === categoryId ? { ...prev, images } : prev); };
 
   return (
@@ -70,8 +80,72 @@ export const ShopProfileView: React.FC = () => {
       </div>
 
       {activeTab === 'products' && <section className="space-y-5 animate-in fade-in duration-150"><div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-gray-100"><div><h2 className="text-xl font-extrabold text-[#20243A]">Available in Shop</h2><span className="text-xs text-[#737B89]">{shopProducts.length} items in stock</span></div>{isOwnerSeller && <button onClick={() => setIsAddProductOpen(true)} className="px-5 py-2.5 rounded-full bg-[#8067E8] hover:bg-[#6E52E2] active:scale-95 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"><Plus className="w-4 h-4" /><span>+ Add Product</span></button>}</div>
-        {(shopCategories.length > 0 || isOwnerSeller) && <div className="flex flex-wrap items-center gap-2"><button onClick={() => setProductCategoryFilter('all')} className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${productCategoryFilter === 'all' ? 'bg-[#8067E8] text-white shadow-xs' : 'bg-[#F1EDFD] text-[#553BB8] hover:bg-[#DDD4FF]'}`}>All</button>{shopCategories.map(cat => <div key={cat.id} className="flex items-center gap-1 pl-3.5 pr-1.5 py-1.5 rounded-full text-xs font-bold bg-[#F1EDFD] text-[#553BB8] hover:bg-[#DDD4FF] transition-all"><button onClick={() => openCategoryPhotos(cat)} className="cursor-pointer font-bold" title={`Manage ${cat.name} photos`}>{cat.name}</button>{isOwnerSeller && <span className="flex items-center gap-0.5 ml-1"><button onClick={() => handleRenameCategory(cat.id, cat.name)} title="Rename category" className="p-1 rounded-full cursor-pointer hover:bg-[#DDD4FF]"><Pencil className="w-3 h-3" /></button><button onClick={() => handleDeleteCategory(cat.id, cat.name)} title="Delete category" className="p-1 rounded-full cursor-pointer hover:bg-[#DDD4FF]"><X className="w-3 h-3" /></button></span>}</div>)}{isOwnerSeller && <button onClick={handleAddCategory} className="flex items-center gap-1 px-3.5 py-1.5 rounded-full text-xs font-bold bg-white border border-dashed border-[#8067E8]/40 text-[#8067E8] hover:bg-[#F1EDFD] transition-all cursor-pointer"><Plus className="w-3.5 h-3.5" />Add Category</button>}</div>}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">{filteredProducts.map((product: Product) => <div key={product.id} onClick={() => navigateTo('product-detail', { product })} className="group bg-white rounded-3xl p-3.5 border border-white/90 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between cursor-pointer" style={{ boxShadow: '0 8px 24px -4px rgba(32, 36, 58, 0.04), inset 0 2px 3px rgba(255, 255, 255, 0.95)' }}><div><div className="relative w-full h-44 rounded-2xl overflow-hidden bg-gray-100 mb-3"><img loading="lazy" decoding="async" src={product.images[0]} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" /><button onClick={e => { e.stopPropagation(); toggleWishlist(product.id); }} className={`absolute top-2.5 right-2.5 p-2 rounded-full backdrop-blur-md transition-all ${isWishlisted(product.id) ? 'bg-[#FF6B8B] text-white' : 'bg-white/80 text-gray-700 hover:bg-white'}`}><Heart className="w-4 h-4 fill-current" /></button>{isOwnerSeller && <button onClick={e => { e.stopPropagation(); void handleDeleteProduct(product); }} disabled={deletingProductId === product.id} title="Delete product from shop" className="absolute top-2.5 left-2.5 z-10 p-2 rounded-full bg-white/90 hover:bg-red-500 text-red-500 hover:text-white backdrop-blur-md shadow-sm transition-all cursor-pointer disabled:opacity-60">{deletingProductId === product.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}</button>}<div className="absolute bottom-2 left-2 px-2.5 py-0.5 bg-[#176F43]/90 text-white rounded-md text-[10px] font-bold">In Stock</div></div><h3 className="font-bold text-sm text-[#20243A] group-hover:text-[#8067E8] transition-colors line-clamp-1 mb-1">{product.name}</h3>{product.sizes && product.sizes.length > 0 && <div className="flex items-center gap-1 mb-2"><span className="text-[10px] text-gray-400 font-semibold">Sizes:</span><span className="text-[10px] font-bold text-gray-700">{product.sizes.slice(0, 4).join(', ')}</span></div>}{product.description && <p className="text-xs text-[#737B89] line-clamp-2 mb-2 leading-relaxed">{product.description}</p>}</div><div className="pt-2 border-t border-gray-100 flex items-center justify-between"><div>{product.price !== undefined && product.price !== null ? <div className="flex items-baseline gap-1.5"><span className="text-base font-extrabold text-[#20243A]">₹{product.price}</span>{product.originalPrice !== undefined && product.originalPrice !== null && product.originalPrice > product.price && <span className="text-xs text-gray-400 line-through">₹{product.originalPrice}</span>}</div> : <span className="text-xs font-bold text-[#8067E8]">Contact for Price</span>}</div><div className="flex items-center gap-1.5"><button onClick={e => { e.stopPropagation(); startChatWithShop(shop, product, `Hi ${shop.ownerName}, is the "${product.name}" available?`); }} title="Ask Seller" className="p-2 rounded-xl bg-[#FAF8FE] hover:bg-[#DDD4FF] text-[#8067E8] transition-colors"><MessageSquare className="w-4 h-4" /></button><button onClick={e => { e.stopPropagation(); addToCart(product); }} className="p-2 rounded-xl bg-[#F1EDFD] hover:bg-[#8067E8] text-[#8067E8] hover:text-white transition-colors cursor-pointer shadow-xs"><ShoppingBag className="w-4 h-4" /></button></div></div></div>)}</div>
+        {(shopCategories.length > 0 || isOwnerSeller) && (
+          <div className="flex flex-wrap items-center gap-2">
+            <button onClick={() => handleFilterChange('all')} className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${productCategoryFilter === 'all' ? 'bg-[#8067E8] text-white shadow-xs' : 'bg-[#F1EDFD] text-[#553BB8] hover:bg-[#DDD4FF]'}`}>All</button>
+            {shopCategories.map(cat => (
+              <div key={cat.id} className={`flex items-center gap-1 pl-3.5 pr-1.5 py-1.5 rounded-full text-xs font-bold transition-all ${productCategoryFilter === cat.id ? 'bg-[#8067E8] text-white' : 'bg-[#F1EDFD] text-[#553BB8] hover:bg-[#DDD4FF]'}`}>
+                <button onClick={() => handleFilterChange(cat.id)} className="cursor-pointer font-bold" title={`View ${cat.name} products`}>{cat.name}</button>
+                {isOwnerSeller && (
+                  <span className="flex items-center gap-0.5 ml-1">
+                    <button onClick={() => openCategoryPhotos(cat)} title={`Manage ${cat.name} cover photos`} className="p-1 rounded-full cursor-pointer hover:bg-[#DDD4FF] hover:text-[#553BB8]"><Camera className="w-3 h-3" /></button>
+                    <button onClick={() => handleRenameCategory(cat.id, cat.name)} title="Rename category" className="p-1 rounded-full cursor-pointer hover:bg-[#DDD4FF] hover:text-[#553BB8]"><Pencil className="w-3 h-3" /></button>
+                    <button onClick={() => handleDeleteCategory(cat.id, cat.name)} title="Delete category" className="p-1 rounded-full cursor-pointer hover:bg-[#DDD4FF] hover:text-[#553BB8]"><X className="w-3 h-3" /></button>
+                  </span>
+                )}
+              </div>
+            ))}
+            {isOwnerSeller && <button onClick={handleAddCategory} className="flex items-center gap-1 px-3.5 py-1.5 rounded-full text-xs font-bold bg-white border border-dashed border-[#8067E8]/40 text-[#8067E8] hover:bg-[#F1EDFD] transition-all cursor-pointer"><Plus className="w-3.5 h-3.5" />Add Category</button>}
+          </div>
+        )}
+
+        {productCategoryFilter !== 'all' && (
+          <div className="flex items-center justify-between -mb-1">
+            <h3 className="text-sm font-extrabold text-[#20243A]">{shopCategories.find(c => c.id === productCategoryFilter)?.name || 'Category'} · {filteredProducts.length} item{filteredProducts.length === 1 ? '' : 's'}</h3>
+            <button onClick={() => handleFilterChange('all')} className="text-xs font-bold text-[#8067E8] hover:underline cursor-pointer">Clear filter</button>
+          </div>
+        )}
+
+        <div key={productCategoryFilter} ref={productsGridRef} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
+          {isProductsLoading ? (
+            Array.from({ length: 8 }).map((_, i) => (
+              <div key={`skeleton-${i}`} className="bg-white rounded-3xl p-3.5 border border-white/90 shadow-sm">
+                <div className="w-full h-44 rounded-2xl shimmer-loading mb-3" />
+                <div className="h-3.5 w-3/4 rounded-full shimmer-loading mb-2" />
+                <div className="h-3 w-1/2 rounded-full shimmer-loading" />
+              </div>
+            ))
+          ) : filteredProducts.length === 0 ? (
+            <div className="col-span-full flex flex-col items-center justify-center text-center py-16 bg-white/60 rounded-3xl border border-dashed border-[#DDD4FF]">
+              <ShoppingBag className="w-10 h-10 text-[#8067E8] mb-3" />
+              <h3 className="font-bold text-[#20243A]">No products in this category yet</h3>
+              {isOwnerSeller && <p className="text-sm text-[#737B89] mt-1">Tap "+ Add Product" and assign it to this category.</p>}
+            </div>
+          ) : (
+            filteredProducts.map((product: Product) => (
+              <div key={product.id} onClick={() => navigateTo('product-detail', { product })} className="group bg-white rounded-3xl p-3.5 border border-white/90 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between cursor-pointer" style={{ boxShadow: '0 8px 24px -4px rgba(32, 36, 58, 0.04), inset 0 2px 3px rgba(255, 255, 255, 0.95)' }}>
+                <div>
+                  <div className="relative w-full h-44 rounded-2xl overflow-hidden bg-gray-100 mb-3">
+                    <ProductImageWithShimmer src={product.images[0]} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                    <button onClick={e => { e.stopPropagation(); toggleWishlist(product.id); }} className={`absolute top-2.5 right-2.5 p-2 rounded-full backdrop-blur-md transition-all ${isWishlisted(product.id) ? 'bg-[#FF6B8B] text-white' : 'bg-white/80 text-gray-700 hover:bg-white'}`}><Heart className="w-4 h-4 fill-current" /></button>
+                    {isOwnerSeller && <button onClick={e => { e.stopPropagation(); void handleDeleteProduct(product); }} disabled={deletingProductId === product.id} title="Delete product from shop" className="absolute top-2.5 left-2.5 z-10 p-2 rounded-full bg-white/90 hover:bg-red-500 text-red-500 hover:text-white backdrop-blur-md shadow-sm transition-all cursor-pointer disabled:opacity-60">{deletingProductId === product.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}</button>}
+                    <div className="absolute bottom-2 left-2 px-2.5 py-0.5 bg-[#176F43]/90 text-white rounded-md text-[10px] font-bold">In Stock</div>
+                  </div>
+                  <h3 className="font-bold text-sm text-[#20243A] group-hover:text-[#8067E8] transition-colors line-clamp-1 mb-1">{product.name}</h3>
+                  {product.sizes && product.sizes.length > 0 && <div className="flex items-center gap-1 mb-2"><span className="text-[10px] text-gray-400 font-semibold">Sizes:</span><span className="text-[10px] font-bold text-gray-700">{product.sizes.slice(0, 4).join(', ')}</span></div>}
+                  {product.description && <p className="text-xs text-[#737B89] line-clamp-2 mb-2 leading-relaxed">{product.description}</p>}
+                </div>
+                <div className="pt-2 border-t border-gray-100 flex items-center justify-between">
+                  <div>{product.price !== undefined && product.price !== null ? <div className="flex items-baseline gap-1.5"><span className="text-base font-extrabold text-[#20243A]">₹{product.price}</span>{product.originalPrice !== undefined && product.originalPrice !== null && product.originalPrice > product.price && <span className="text-xs text-gray-400 line-through">₹{product.originalPrice}</span>}</div> : <span className="text-xs font-bold text-[#8067E8]">Contact for Price</span>}</div>
+                  <div className="flex items-center gap-1.5">
+                    <button onClick={e => { e.stopPropagation(); startChatWithShop(shop, product, `Hi ${shop.ownerName}, is the "${product.name}" available?`); }} title="Ask Seller" className="p-2 rounded-xl bg-[#FAF8FE] hover:bg-[#DDD4FF] text-[#8067E8] transition-colors"><MessageSquare className="w-4 h-4" /></button>
+                    <button onClick={e => { e.stopPropagation(); addToCart(product); }} className="p-2 rounded-xl bg-[#F1EDFD] hover:bg-[#8067E8] text-[#8067E8] hover:text-white transition-colors cursor-pointer shadow-xs"><ShoppingBag className="w-4 h-4" /></button>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </section>}
 
       {activeTab === 'reviews' && <section className="space-y-6 animate-in fade-in duration-150"><div className="bg-white rounded-3xl p-6 border border-white/90 shadow-sm flex flex-col sm:flex-row items-center gap-8"><div className="text-center sm:text-left shrink-0"><div className="text-5xl font-extrabold text-[#20243A]">{shop.rating}</div><div className="flex items-center justify-center sm:justify-start gap-1 text-[#FAB005] my-1">{[...Array(5)].map((_, i) => <Star key={i} className="w-5 h-5 fill-current" />)}</div><p className="text-xs text-[#737B89]">Based on {shop.reviewsCount} local customer reviews</p></div><div className="flex-1 w-full space-y-2"><div className="flex items-center gap-3 text-xs"><span className="w-12 font-bold">5 Stars</span><div className="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-[#8067E8] w-[90%]" /></div><span className="w-8 text-right text-gray-500">90%</span></div><div className="flex items-center gap-3 text-xs"><span className="w-12 font-bold">4 Stars</span><div className="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-[#8067E8] w-[8%]" /></div><span className="w-8 text-right text-gray-500">8%</span></div><div className="flex items-center gap-3 text-xs"><span className="w-12 font-bold">3 Stars</span><div className="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-[#8067E8] w-[2%]" /></div><span className="w-8 text-right text-gray-500">2%</span></div></div></div><div className="space-y-3">{reviews.map(rev => <div key={rev.id} className="bg-white rounded-3xl p-5 border border-white/90 shadow-xs space-y-2"><div className="flex items-center justify-between"><div className="flex items-center gap-3"><img loading="lazy" decoding="async" src={rev.authorAvatar} alt={rev.authorName} className="w-9 h-9 rounded-full object-cover" /><div><h4 className="font-bold text-sm text-[#20243A]">{rev.authorName}</h4><p className="text-[11px] text-gray-400">{rev.date}</p></div></div><div className="flex items-center gap-0.5 text-[#FAB005]">{[...Array(rev.rating)].map((_, i) => <Star key={i} className="w-3.5 h-3.5 fill-current" />)}</div></div><p className="text-sm text-[#505767] leading-relaxed pt-1">{rev.comment}</p></div>)}</div></section>}

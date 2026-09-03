@@ -32,7 +32,7 @@ import {
   where,
   writeBatch,
 } from 'firebase/firestore';
-import { uploadToCloudinary } from '../utils/cloudinary';
+import { uploadToCloudinary, cloudinaryConfigured } from '../utils/cloudinary';
 import { validateImageFile } from '../utils/imageOptimizer';
 
 interface Toast {
@@ -405,8 +405,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const cleanShopImageUrl = (value: unknown): string => {
       const url = String(value || '').trim();
-      if (!url) return '';
-      return url.startsWith('https://res.cloudinary.com/') ? url : '';
+      // Reject base64/blob placeholders, but don't hard-lock to one CDN domain —
+      // any real hosted https URL (Cloudinary, a custom domain, etc.) is valid.
+      // The old check only accepted https://res.cloudinary.com/... and silently
+      // wiped every photo that didn't match that exact prefix on every reload.
+      if (!url || url.startsWith('data:') || url.startsWith('blob:')) return '';
+      return /^https?:\/\//i.test(url) ? url : '';
     };
 
     const mapFirestoreShop = (raw: any, id: string): Shop => {
@@ -893,12 +897,69 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const uploadProductImageIfNeeded = async (productId: string, url: string): Promise<string> => { if (!url.startsWith('data:')) return url; const response = await fetch(url); return uploadToCloudinary(await response.blob(), `products/${currentUser.id}/${productId}`); };
   const createProduct = async (productData: Partial<Product>): Promise<boolean> => {
-    const name = productData.name?.trim(); if (!name) { showToast('Product name is required.', 'warning'); return false; } if (!productData.images?.length) { showToast('Add at least one product photo.', 'warning'); return false; } if (currentUser.role !== 'seller' || !currentUser.shopId) { showToast('Please sign in as a seller before publishing a product.', 'warning'); return false; } if (!firebaseDb) { showToast('Firebase is not fully configured. Enable Firestore before publishing products.', 'error'); return false; }
-    const productId = `prod_${crypto.randomUUID()}`; const marketId = productData.marketId || currentUser.sellerLocation?.marketId || 'mkt_kachumara'; const market = markets.find(m => m.id === marketId); const category = categories.find(c => c.id === productData.categoryId);
-    try { const uploadedImages = await Promise.all(productData.images.map((url) => uploadProductImageIfNeeded(productId, String(url)))); const newProd = removeUndefined({ id: productId, sellerId: currentUser.id, shopId: currentUser.shopId, shopName: currentUser.shopName || 'Local Shop', marketId, marketName: market?.name || currentUser.sellerLocation?.marketName || 'Local Market', state: currentUser.sellerLocation?.state, district: currentUser.sellerLocation?.district, categoryId: productData.categoryId, categoryName: productData.categoryName || category?.name, shopCategoryId: productData.shopCategoryId, shopCategoryName: productData.shopCategoryName, name, price: productData.price, originalPrice: productData.originalPrice, description: productData.description?.trim() || undefined, images: uploadedImages, sizes: productData.sizes, colors: productData.colors, inStock: productData.stockCount !== undefined ? productData.stockCount > 0 : undefined, stockCount: productData.stockCount, material: productData.material?.trim() || undefined, rating: 0, reviewsCount: 0, status: 'published' }) as Product; await setDoc(doc(firebaseDb, 'products', productId), { ...newProd, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }); setProducts(prev => [newProd, ...prev.filter(p => p.id !== productId)]); showToast(`Product "${newProd.name}" published to your shop!`, 'success'); return true; }
-    catch (error) { showToast(error instanceof Error ? error.message : 'Unable to publish the product. Check that Firebase is configured correctly.', 'error'); return false; }
+    const name = productData.name?.trim();
+    if (!name) { showToast('Product name is required.', 'warning'); return false; }
+    if (!productData.images?.length) { showToast('Add at least one product photo.', 'warning'); return false; }
+    if (currentUser.role !== 'seller' || !currentUser.shopId) { showToast('Please sign in as a seller before publishing a product.', 'warning'); return false; }
+    if (!firebaseDb) { showToast('Firebase is not fully configured. Enable Firestore before publishing products.', 'error'); return false; }
+    const hasNewPhoto = productData.images.some((img) => String(img).startsWith('data:'));
+    if (hasNewPhoto && !cloudinaryConfigured) {
+      showToast('Photo hosting is not configured for this deployment. Set VITE_CLOUDINARY_CLOUD_NAME and VITE_CLOUDINARY_UPLOAD_PRESET in your hosting provider\'s environment variables and rebuild the site, then try again.', 'error');
+      return false;
+    }
+    const productId = `prod_${crypto.randomUUID()}`;
+    const marketId = productData.marketId || currentUser.sellerLocation?.marketId || 'mkt_kachumara';
+    const market = markets.find(m => m.id === marketId);
+    const category = categories.find(c => c.id === productData.categoryId);
+    try {
+      const uploadedImages = await Promise.all(productData.images.map((url) => uploadProductImageIfNeeded(productId, String(url))));
+      const newProd = removeUndefined({ id: productId, sellerId: currentUser.id, shopId: currentUser.shopId, shopName: currentUser.shopName || 'Local Shop', marketId, marketName: market?.name || currentUser.sellerLocation?.marketName || 'Local Market', state: currentUser.sellerLocation?.state, district: currentUser.sellerLocation?.district, categoryId: productData.categoryId, categoryName: productData.categoryName || category?.name, shopCategoryId: productData.shopCategoryId, shopCategoryName: productData.shopCategoryName, name, price: productData.price, originalPrice: productData.originalPrice, description: productData.description?.trim() || undefined, images: uploadedImages, sizes: productData.sizes, colors: productData.colors, inStock: productData.stockCount !== undefined ? productData.stockCount > 0 : undefined, stockCount: productData.stockCount, material: productData.material?.trim() || undefined, rating: 0, reviewsCount: 0, status: 'published' }) as Product;
+      const productRef = doc(firebaseDb, 'products', productId);
+      await setDoc(productRef, { ...newProd, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      // Verify the write actually stuck — catches silent Firestore rule
+      // rejections and env-config problems immediately instead of after refresh.
+      const savedSnap = await getDoc(productRef);
+      const savedImages = savedSnap.exists() ? savedSnap.data()?.images : undefined;
+      if (!savedSnap.exists() || !Array.isArray(savedImages) || savedImages.length !== uploadedImages.length) {
+        throw new Error('The product saved, but its photos did not persist correctly. Please check your Firestore rules are deployed, then try again.');
+      }
+      setProducts(prev => [newProd, ...prev.filter(p => p.id !== productId)]);
+      showToast(`Product "${newProd.name}" published to your shop!`, 'success');
+      return true;
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Unable to publish the product. Check that Firebase is configured correctly.', 'error');
+      return false;
+    }
   };
-  const updateProduct = async (productId: string, productData: Partial<Product>): Promise<boolean> => { const target = products.find(p => p.id === productId); if (!target) { showToast('Product not found.', 'error'); return false; } if (currentUser.role !== 'seller' || (target.shopId !== currentUser.shopId && target.sellerId !== currentUser.id)) { showToast('You are not allowed to edit this product.', 'error'); return false; } if (!firebaseDb) { showToast('Firebase is not fully configured. Enable Firestore before editing products.', 'error'); return false; } try { const nextImages = productData.images ? await Promise.all(productData.images.map((url) => uploadProductImageIfNeeded(productId, String(url))) ) : undefined; await updateDoc(doc(firebaseDb, 'products', productId), removeUndefined({ ...productData, ...(nextImages ? { images: nextImages } : {}), updatedAt: serverTimestamp() })); setProducts(prev => prev.map(p => p.id === productId ? { ...p, ...productData, ...(nextImages ? { images: nextImages } : {}) } : p)); showToast('Product updated successfully!', 'success'); return true; } catch (error) { showToast(error instanceof Error ? error.message : 'Unable to update the product.', 'error'); return false; } };
+  const updateProduct = async (productId: string, productData: Partial<Product>): Promise<boolean> => {
+    const target = products.find(p => p.id === productId);
+    if (!target) { showToast('Product not found.', 'error'); return false; }
+    if (currentUser.role !== 'seller' || (target.shopId !== currentUser.shopId && target.sellerId !== currentUser.id)) { showToast('You are not allowed to edit this product.', 'error'); return false; }
+    if (!firebaseDb) { showToast('Firebase is not fully configured. Enable Firestore before editing products.', 'error'); return false; }
+    const hasNewPhoto = productData.images?.some((img) => String(img).startsWith('data:'));
+    if (hasNewPhoto && !cloudinaryConfigured) {
+      showToast('Photo hosting is not configured for this deployment. Set VITE_CLOUDINARY_CLOUD_NAME and VITE_CLOUDINARY_UPLOAD_PRESET in your hosting provider\'s environment variables and rebuild the site, then try again.', 'error');
+      return false;
+    }
+    try {
+      const nextImages = productData.images ? await Promise.all(productData.images.map((url) => uploadProductImageIfNeeded(productId, String(url)))) : undefined;
+      const productRef = doc(firebaseDb, 'products', productId);
+      await updateDoc(productRef, removeUndefined({ ...productData, ...(nextImages ? { images: nextImages } : {}), updatedAt: serverTimestamp() }));
+      if (nextImages) {
+        const savedSnap = await getDoc(productRef);
+        const savedImages = savedSnap.exists() ? savedSnap.data()?.images : undefined;
+        if (!savedSnap.exists() || !Array.isArray(savedImages) || savedImages.length !== nextImages.length) {
+          throw new Error('The product saved, but its photos did not persist correctly. Please check your Firestore rules are deployed, then try again.');
+        }
+      }
+      setProducts(prev => prev.map(p => p.id === productId ? { ...p, ...productData, ...(nextImages ? { images: nextImages } : {}) } : p));
+      showToast('Product updated successfully!', 'success');
+      return true;
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Unable to update the product.', 'error');
+      return false;
+    }
+  };
   const deleteProduct = async (productId: string) => { const target = products.find(p => p.id === productId); if (!target) { showToast('Product not found.', 'error'); return; } if (currentUser.role !== 'seller' || (target.shopId !== currentUser.shopId && target.sellerId !== currentUser.id)) { showToast('You are not allowed to delete this product.', 'error'); return; } if (!firebaseDb) { showToast('Firebase is not configured. Product data cannot be deleted safely.', 'error'); return; } try { await deleteDoc(doc(firebaseDb, 'products', productId)); setProducts(prev => prev.filter(p => p.id !== productId)); showToast('Product removed from shop catalog', 'info'); } catch (error) { showToast(error instanceof Error ? error.message : 'Unable to remove the product.', 'error'); } };
 
   const updateShopImages = async (shopId: string, updates: { avatarFile?: File | null; bannerFile?: File | null; removeAvatar?: boolean; removeBanner?: boolean }): Promise<boolean> => {
