@@ -1,0 +1,72 @@
+From be588ec85e9ddf77e7397fc32e997aa947a18bde Mon Sep 17 00:00:00 2001
+From: "Claude (sandbox)" <claude-sandbox@local>
+Date: Thu, 3 Sep 2026 07:29:51 +0000
+Subject: [PATCH] fix: use real-time onSnapshot listeners for shops and products
+
+Replace one-time getDocs fetch of shops and published products with
+Firestore onSnapshot listeners so the app's shared state stays in sync
+automatically when shop or product data changes elsewhere, instead of
+requiring a manual page refresh. The non-Firebase REST /shops fallback
+path is unchanged.
+---
+ src/context/AppContext.tsx | 40 +++++++++++++++++++++++++-------------
+ 1 file changed, 27 insertions(+), 13 deletions(-)
+
+diff --git a/src/context/AppContext.tsx b/src/context/AppContext.tsx
+index be9304d..65c9f8b 100644
+--- a/src/context/AppContext.tsx
++++ b/src/context/AppContext.tsx
+@@ -24,7 +24,7 @@ import {
+   deleteField,
+   doc,
+   getDoc,
+-  getDocs,
++  onSnapshot,
+   query,
+   serverTimestamp,
+   setDoc,
+@@ -474,21 +474,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children
+       };
+     };
+ 
+-    const loadRemoteData = async () => {
+-      try {
+-        if (firebaseConfigured && firebaseDb) {
+-          const [shopSnap, productSnap] = await Promise.all([
+-            getDocs(collection(firebaseDb, 'shops')),
+-            getDocs(query(collection(firebaseDb, 'products'), where('status', '==', 'published'))),
+-          ]);
++    if (firebaseConfigured && firebaseDb) {
++      // Real-time listeners keep shops and products in sync automatically
++      // whenever the underlying Firestore data changes, instead of only
++      // loading once on mount.
++      const unsubscribeShops = onSnapshot(
++        collection(firebaseDb, 'shops'),
++        snapshot => {
++          if (cancelled) return;
++          setShops(snapshot.docs.map(doc => mapFirestoreShop(doc.data(), doc.id)));
++        },
++        () => {
++          // Leave shops as-is on listener error; a later snapshot can recover.
++        }
++      );
++      const unsubscribeProducts = onSnapshot(
++        query(collection(firebaseDb, 'products'), where('status', '==', 'published')),
++        snapshot => {
++          if (cancelled) return;
++          setProducts(snapshot.docs.map(doc => mapFirestoreProduct(doc.data(), doc.id)));
++        },
++        () => {
++          // Leave products as-is on listener error; a later snapshot can recover.
++        }
++      );
++      return () => { cancelled = true; unsubscribeShops(); unsubscribeProducts(); };
++    }
+ 
++    const loadRemoteData = async () => {
++      try {
+         const result = await apiRequest<any[]>('/shops');
+         if (cancelled || !Array.isArray(result)) return;
+         const remote = result.map((raw: any): Shop => mapFirestoreShop({
+-- 
+2.43.0
