@@ -638,10 +638,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (currentUser.role === 'guest') { setConversations([]); setOrders(INITIAL_ORDERS); return; }
     void fetchConversations();
     void fetchOrders();
-    const conversationsInterval = window.setInterval(() => { void fetchConversations(); }, 6000);
-    const ordersInterval = window.setInterval(() => { void fetchOrders(); }, 10000);
+    // Poll faster while the messages drawer is actually open (so chatting
+    // feels responsive), and fall back to a slower background interval the
+    // rest of the time so we're not hammering the API when no one is
+    // watching. True instant delivery would need a push-based transport
+    // (e.g. WebSockets/SSE on the backend) since orders/conversations are
+    // intentionally not readable directly via Firestore listeners.
+    const conversationsIntervalMs = isMessagesOpen ? 2000 : 6000;
+    const conversationsInterval = window.setInterval(() => { void fetchConversations(); }, conversationsIntervalMs);
+    const ordersInterval = window.setInterval(() => { void fetchOrders(); }, 5000);
     return () => { window.clearInterval(conversationsInterval); window.clearInterval(ordersInterval); };
-  }, [currentUser.id, currentUser.role]);
+  }, [currentUser.id, currentUser.role, isMessagesOpen]);
 
   useEffect(() => { if (activeConversationId && isMessagesOpen) markConversationRead(activeConversationId); }, [activeConversationId, isMessagesOpen]);
 
