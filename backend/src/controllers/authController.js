@@ -7,6 +7,16 @@ import { ok, fail } from '../utils/apiResponse.js';
 
 function normalizeEmail(email) { return String(email || '').trim().toLowerCase(); }
 
+// Normalizes a phone number for matching purposes: strips everything except
+// digits, then keeps only the last 10 digits so that "+91 98765 43210",
+// "091-98765-43210" and "9876543210" are all treated as the same number.
+// This is used only for lookups/comparisons — the original, user-entered
+// phone value is still what gets displayed and stored as `phone`.
+function normalizePhone(value) {
+  const digitsOnly = String(value || '').replace(/\D/g, '');
+  return digitsOnly.slice(-10);
+}
+
 async function publicUser(user) {
   const shop = user.role === 'seller'
     ? await Shop.findOne({ ownerId: user._id }).select('_id name state district marketId marketName').lean()
@@ -65,6 +75,7 @@ export async function register(req, res) {
       name: name.trim(),
       email: normalizedEmail,
       phone: String(phone || '').trim(),
+      phoneNormalized: normalizePhone(phone),
       role: safeRole,
       avatar: '',
       addresses: [],
@@ -90,7 +101,14 @@ export async function resolveLogin(req, res) {
   const identifier = String(req.body?.identifier || '').trim();
   if (!identifier) return fail(res, 'Email or phone is required.');
   if (identifier.includes('@')) return ok(res, { email: normalizeEmail(identifier) });
-  const user = await User.findOne({ phone: identifier });
+  const normalized = normalizePhone(identifier);
+  if (!normalized) return fail(res, 'Please enter a valid phone number.');
+  let user = await User.findOne({ phoneNormalized: normalized });
+  if (!user) {
+    // Fall back to a raw match for accounts created before phoneNormalized
+    // existed (e.g. seeded/legacy users that haven't re-saved their phone).
+    user = await User.findOne({ phone: identifier });
+  }
   if (!user) return fail(res, 'No account was found for this phone number.', 404);
   return ok(res, { email: user.email });
 }

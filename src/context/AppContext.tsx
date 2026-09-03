@@ -773,6 +773,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (error) { throw new Error(firebaseAuthError(error)); }
   };
 
+  // Normalizes a phone number for login matching: strips everything except
+  // digits, then keeps only the last 10 digits, so "+91 98765 43210",
+  // "091-98765-43210" and "9876543210" all resolve to the same account.
+  // The original, user-entered value is still what gets saved/displayed
+  // as `phone` — this is only stored alongside it for lookups.
+  const normalizePhoneForLogin = (value?: string) => String(value || '').replace(/\D/g, '').slice(-10);
+
   const createFirebaseProfile = async (firebaseUser: FirebaseUser, data: Record<string, unknown>) => {
     if (!firebaseDb) throw new Error('Firestore is not configured.');
     await setDoc(doc(firebaseDb, 'users', firebaseUser.uid), { ...data, email: firebaseUser.email || '', createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
@@ -785,7 +792,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       credential = await createUserWithEmailAndPassword(firebaseAuthClient, data.email.trim().toLowerCase(), data.password);
       await credential.user.getIdToken(true); await updateProfile(credential.user, { displayName: data.name.trim() });
-      await createFirebaseProfile(credential.user, { name: data.name.trim(), phone: data.phone?.trim() || '', role: 'buyer', avatar: credential.user.photoURL || '', addresses: [] });
+      await createFirebaseProfile(credential.user, { name: data.name.trim(), phone: data.phone?.trim() || '', phoneNormalized: normalizePhoneForLogin(data.phone), role: 'buyer', avatar: credential.user.photoURL || '', addresses: [] });
       const user = await profileForUser(credential.user); setCurrentUser(user); setIsAuthModalOpen(false); showToast(`Welcome to Claymarket, ${data.name.trim()}!`, 'success');
     } catch (error) { if (credential?.user) await deleteUser(credential.user).catch(() => {}); throw new Error(firebaseAuthError(error)); }
     finally { manualAuthInProgressRef.current = false; }
@@ -802,7 +809,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!shopName) throw new Error('Please enter a shop name.'); if (!data.shop.state.trim()) throw new Error('Please enter your state.'); if (!data.shop.district.trim()) throw new Error('Please enter your district.');
       if (firebaseUser.displayName !== data.name.trim()) await updateProfile(firebaseUser, { displayName: data.name.trim() });
       const shopDoc = { ownerId: firebaseUser.uid, ownerName: data.name.trim(), name: shopName, slug: `${shopName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'local-shop'}-${Date.now()}`, marketId: selectedMarket.id, marketName: selectedMarket.name, state: data.shop.state.trim(), district: data.shop.district.trim(), categoryIds: [selectedCategory.id], categoryId: selectedCategory.id, categoryName: selectedCategory.name, profileImage: '', coverImage: '', description: '', phone: data.phone?.trim() || '', address: data.shop.address?.trim() || '', rating: 0, reviewsCount: 0, verified: false, followersCount: 0, createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
-      const userDoc = { name: data.name.trim(), email: firebaseUser.email || '', phone: data.phone?.trim() || '', role: 'seller', avatar: firebaseUser.photoURL || '', addresses: Array.isArray(currentUser.addresses) ? currentUser.addresses : [], shopId, shopName, sellerLocation: { state: data.shop.state.trim(), district: data.shop.district.trim(), marketId: selectedMarket.id, marketName: selectedMarket.name } };
+      const userDoc = { name: data.name.trim(), email: firebaseUser.email || '', phone: data.phone?.trim() || '', phoneNormalized: normalizePhoneForLogin(data.phone), role: 'seller', avatar: firebaseUser.photoURL || '', addresses: Array.isArray(currentUser.addresses) ? currentUser.addresses : [], shopId, shopName, sellerLocation: { state: data.shop.state.trim(), district: data.shop.district.trim(), marketId: selectedMarket.id, marketName: selectedMarket.name } };
       const batch = writeBatch(firebaseDb); batch.set(doc(firebaseDb, 'users', firebaseUser.uid), { ...userDoc, updatedAt: serverTimestamp() }, { merge: true }); batch.set(doc(firebaseDb, 'shops', shopId), shopDoc); await withTimeout(batch.commit(), 10000, 'Shop creation timed out. Please check your Firebase connection and try again.');
       setAuthToken(await withTimeout(firebaseUser.getIdToken(true), 8000, 'Shop created, but the session token could not be refreshed. Please refresh and try again.'));
       const user = await profileForUser(firebaseUser); setCurrentUser(user);
