@@ -20,11 +20,24 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Apply supplied patch
+      - name: Apply realtime change
         run: |
-          curl -fsSL "https://raw.githubusercontent.com/aminulislamsikandar-lang/claymarket-gitready/tmp/apply-realtime-patch/.tmp/0001-realtime-shops-products.patch" -o /tmp/realtime.patch
-          git apply --check /tmp/realtime.patch
-          git apply /tmp/realtime.patch
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/context/AppContext.tsx')
+          s = p.read_text()
+          old_import = "  getDoc,\n  getDocs,\n  query,"
+          new_import = "  getDoc,\n  onSnapshot,\n  query,"
+          if old_import not in s:
+              raise SystemExit('Expected getDocs import block not found')
+          s = s.replace(old_import, new_import, 1)
+          old = '''    const loadRemoteData = async () => {\n      try {\n        if (firebaseConfigured && firebaseDb) {\n          const [shopSnap, productSnap] = await Promise.all([\n            getDocs(collection(firebaseDb, 'shops')),\n            getDocs(query(collection(firebaseDb, 'products'), where('status', '==', 'published'))),\n          ]);\n          if (cancelled) return;\n          const remoteShops = shopSnap.docs.map(snapshot => mapFirestoreShop(snapshot.data(), snapshot.id));\n          const remoteProducts = productSnap.docs.map(snapshot => mapFirestoreProduct(snapshot.data(), snapshot.id));\n          setShops(remoteShops);\n          setProducts(remoteProducts);\n          return;\n        }\n\n        const result = await apiRequest<any[]>('/shops');\n'''
+          new = '''    if (firebaseConfigured && firebaseDb) {\n      // Real-time listeners keep shops and products in sync automatically\n      // whenever the underlying Firestore data changes, instead of only\n      // loading once on mount.\n      const unsubscribeShops = onSnapshot(\n        collection(firebaseDb, 'shops'),\n        snapshot => {\n          if (cancelled) return;\n          setShops(snapshot.docs.map(doc => mapFirestoreShop(doc.data(), doc.id)));\n        },\n        () => {\n          // Leave shops as-is on listener error; a later snapshot can recover.\n        }\n      );\n      const unsubscribeProducts = onSnapshot(\n        query(collection(firebaseDb, 'products'), where('status', '==', 'published')),\n        snapshot => {\n          if (cancelled) return;\n          setProducts(snapshot.docs.map(doc => mapFirestoreProduct(doc.data(), doc.id)));\n        },\n        () => {\n          // Leave products as-is on listener error; a later snapshot can recover.\n        }\n      );\n      return () => { cancelled = true; unsubscribeShops(); unsubscribeProducts(); };\n    }\n\n    const loadRemoteData = async () => {\n      try {\n        const result = await apiRequest<any[]>('/shops');\n'''
+          if old not in s:
+              raise SystemExit('Expected marketplace loading block not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
 
       - name: Typecheck
         run: |
@@ -36,5 +49,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/context/AppContext.tsx
+          git diff --cached --check
           git commit -m "fix: use real-time listeners for shops and products"
           git push origin HEAD:fix/market-autocomplete-seller
