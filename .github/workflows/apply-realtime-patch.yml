@@ -1,0 +1,38 @@
+name: Apply realtime marketplace patch
+
+on:
+  push:
+    branches: [tmp/apply-realtime-patch]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout target branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/market-autocomplete-seller
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Apply supplied patch
+        run: |
+          curl -fsSL "https://raw.githubusercontent.com/aminulislamsikandar-lang/claymarket-gitready/tmp/apply-realtime-patch/.tmp/0001-realtime-shops-products.patch" -o /tmp/realtime.patch
+          git apply --check /tmp/realtime.patch
+          git apply /tmp/realtime.patch
+
+      - name: Typecheck
+        run: |
+          npm ci
+          npx tsc --noEmit
+
+      - name: Commit and push fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/context/AppContext.tsx
+          git commit -m "fix: use real-time listeners for shops and products"
+          git push origin HEAD:fix/market-autocomplete-seller
