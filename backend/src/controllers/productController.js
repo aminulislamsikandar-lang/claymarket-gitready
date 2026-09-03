@@ -51,7 +51,7 @@ export const updateProduct = async (req, res) => {
   const product = await Product.findById(req.params.id);
   if (!product) return fail(res, 'Product not found.', 404);
   if (req.user.role !== 'admin' && product.sellerId.toString() !== req.user._id.toString()) return fail(res, 'You can only edit your own products.', 403);
-  const allowed = ['name','description','price','originalPrice','stock','sizes','colors','images','material','status','categoryIds'];
+  const allowed = ['name','description','price','originalPrice','stockCount','sizes','colors','images','material','status','categoryIds'];
   for (const key of allowed) if (key in req.body) product[key] = req.body[key];
   if (!product.name?.trim()) return fail(res, 'Product name is required.');
   if (!Array.isArray(product.images) || product.images.length < 1) return fail(res, 'At least one product image is required.');

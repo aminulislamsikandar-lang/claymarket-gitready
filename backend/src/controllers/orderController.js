@@ -24,7 +24,7 @@ export async function createOrder(req, res) {
     const quantity = Number(item.quantity);
     if (!product) return fail(res, 'One or more products are unavailable.', 409);
     if (!Number.isInteger(quantity) || quantity < 1 || quantity > 999) return fail(res, 'Invalid quantity.');
-    if (Number.isFinite(product.stock) && product.stock < quantity) return fail(res, `Insufficient stock for ${product.name}.`, 409);
+    if (Number.isFinite(product.stockCount) && product.stockCount < quantity) return fail(res, `Insufficient stock for ${product.name}.`, 409);
     const unitPrice = Number(product.price);
     if (!Number.isFinite(unitPrice) || unitPrice < 0) return fail(res, `Price is not available for ${product.name}. Please contact the seller.` , 409);
     total += unitPrice * quantity;
