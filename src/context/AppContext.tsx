@@ -24,7 +24,7 @@ import {
   deleteField,
   doc,
   getDoc,
-  getDocs,
+  onSnapshot,
   query,
   serverTimestamp,
   setDoc,
@@ -474,21 +474,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     };
 
+    if (firebaseConfigured && firebaseDb) {
+      // Real-time listeners keep shops and products in sync automatically
+      // whenever the underlying Firestore data changes, instead of only
+      // loading once on mount.
+      const unsubscribeShops = onSnapshot(
+        collection(firebaseDb, 'shops'),
+        snapshot => {
+          if (cancelled) return;
+          setShops(snapshot.docs.map(doc => mapFirestoreShop(doc.data(), doc.id)));
+        },
+        () => {
+          // Leave shops as-is on listener error; a later snapshot can recover.
+        }
+      );
+      const unsubscribeProducts = onSnapshot(
+        query(collection(firebaseDb, 'products'), where('status', '==', 'published')),
+        snapshot => {
+          if (cancelled) return;
+          setProducts(snapshot.docs.map(doc => mapFirestoreProduct(doc.data(), doc.id)));
+        },
+        () => {
+          // Leave products as-is on listener error; a later snapshot can recover.
+        }
+      );
+      return () => { cancelled = true; unsubscribeShops(); unsubscribeProducts(); };
+    }
+
     const loadRemoteData = async () => {
       try {
-        if (firebaseConfigured && firebaseDb) {
-          const [shopSnap, productSnap] = await Promise.all([
-            getDocs(collection(firebaseDb, 'shops')),
-            getDocs(query(collection(firebaseDb, 'products'), where('status', '==', 'published'))),
-          ]);
-          if (cancelled) return;
-          const remoteShops = shopSnap.docs.map(snapshot => mapFirestoreShop(snapshot.data(), snapshot.id));
-          const remoteProducts = productSnap.docs.map(snapshot => mapFirestoreProduct(snapshot.data(), snapshot.id));
-          setShops(remoteShops);
-          setProducts(remoteProducts);
-          return;
-        }
-
         const result = await apiRequest<any[]>('/shops');
         if (cancelled || !Array.isArray(result)) return;
         const remote = result.map((raw: any): Shop => mapFirestoreShop({
