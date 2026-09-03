@@ -1,0 +1,28 @@
+name: apply phone normalization patch
+on:
+  push:
+    branches:
+      - fix/market-autocomplete-seller
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    if: github.actor != 'github-actions[bot]'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: fix/market-autocomplete-seller
+      - name: Apply patch and commit
+        run: |
+          sed -i '/^@@ -$/d' .tmp/0002-phone-login-normalization.patch
+          git apply --check .tmp/0002-phone-login-normalization.patch
+          git apply .tmp/0002-phone-login-normalization.patch
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/context/AppContext.tsx backend/src/controllers/authController.js
+          git commit -m 'fix: normalize phone numbers for login matching'
+          git rm .tmp/0002-phone-login-normalization.patch .github/workflows/.tmp-phone-normalization.yml
+          git commit -m 'chore: remove temporary phone normalization patch workflow'
+          git push origin HEAD:fix/market-autocomplete-seller
