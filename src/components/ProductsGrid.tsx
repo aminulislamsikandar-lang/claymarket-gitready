@@ -23,11 +23,12 @@ interface ProductsGridProps {
 const SKELETON_COUNT = 8;
 
 const LAYOUT_CONTAINER_CLASS: Record<ProductViewPreferences['layout'], string> = {
-  large: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5',
+  large: 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-5',
   medium: 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4',
   list: 'flex flex-col gap-3',
   details: 'flex flex-col gap-2',
   natural: 'columns-2 sm:columns-3 lg:columns-4 gap-4 [column-fill:_balance]',
+  mosaic: 'grid grid-cols-3 gap-[2px] bg-black rounded-2xl overflow-hidden',
 };
 
 const priceBlock = (product: Product, size: 'sm' | 'lg') => {
@@ -51,11 +52,18 @@ export const ProductsGrid: React.FC<ProductsGridProps> = ({ products, prefs, isL
   const effectiveShowDetails = layout === 'list' || layout === 'details' ? true : showDetails;
 
   if (isLoading) {
+    if (layout === 'mosaic') {
+      return (
+        <div className={LAYOUT_CONTAINER_CLASS.mosaic}>
+          {Array.from({ length: 9 }).map((_, i) => <div key={`skeleton-${i}`} className="aspect-square shimmer-loading" />)}
+        </div>
+      );
+    }
     return (
       <div className={LAYOUT_CONTAINER_CLASS[layout]}>
         {Array.from({ length: SKELETON_COUNT }).map((_, i) => (
           <div key={`skeleton-${i}`} className={`bg-white rounded-3xl p-3.5 border border-white/90 shadow-sm ${layout === 'natural' ? 'break-inside-avoid mb-4' : ''} ${layout === 'list' || layout === 'details' ? 'flex items-center gap-4' : ''}`}>
-            <div className={`shimmer-loading rounded-2xl ${layout === 'list' || layout === 'details' ? 'w-24 h-24 shrink-0' : layout === 'medium' ? 'w-full h-28 mb-3' : 'w-full h-44 mb-3'}`} />
+            <div className={`shimmer-loading rounded-2xl ${layout === 'list' || layout === 'details' ? 'w-24 h-24 shrink-0' : layout === 'medium' ? 'w-full h-28 mb-3' : 'w-full h-60 mb-3'}`} />
             <div className="flex-1 min-w-0">
               <div className="h-3.5 w-3/4 rounded-full shimmer-loading mb-2" />
               <div className="h-3 w-1/2 rounded-full shimmer-loading" />
@@ -109,6 +117,32 @@ export const ProductsGrid: React.FC<ProductsGridProps> = ({ products, prefs, isL
     </div>
   );
 
+  // --- Mosaic: tight 3-per-row grid, image-only, hairline black dividers ----------------------
+  if (layout === 'mosaic') {
+    return (
+      <>
+        <div className={LAYOUT_CONTAINER_CLASS.mosaic}>
+          {products.map(product => (
+            <div key={product.id} className="relative aspect-square bg-black overflow-hidden cursor-pointer">
+              <ProductImageViewer
+                images={product.images}
+                alt={product.name}
+                fit="cover"
+                frameClassName="w-full h-full"
+                onNavigate={() => onNavigate(product)}
+                onOpenLightbox={idx => openLightbox(product, idx)}
+              >
+                {wishlistBtn(product, 'sm')}
+                {deleteBtn(product, 'sm')}
+              </ProductImageViewer>
+            </div>
+          ))}
+        </div>
+        {lightbox && <ImageLightbox images={lightbox.product.images} startIndex={lightbox.index} title={lightbox.product.name} onClose={() => setLightbox(null)} />}
+      </>
+    );
+  }
+
   // --- Card layouts: large / medium / natural -------------------------------------------------
   if (layout === 'large' || layout === 'medium' || layout === 'natural') {
     const isNatural = layout === 'natural';
@@ -129,7 +163,7 @@ export const ProductsGrid: React.FC<ProductsGridProps> = ({ products, prefs, isL
                   alt={product.name}
                   fit={imageFit}
                   natural={isNatural}
-                  frameClassName={isNatural ? 'w-full mb-3' : `w-full rounded-2xl mb-3 ${isMedium ? 'h-28' : 'h-44'}`}
+                  frameClassName={isNatural ? 'w-full mb-3' : `w-full rounded-2xl mb-3 ${isMedium ? 'h-28' : 'h-60 sm:h-64'}`}
                   onNavigate={() => onNavigate(product)}
                   onOpenLightbox={idx => openLightbox(product, idx)}
                 >
@@ -146,7 +180,7 @@ export const ProductsGrid: React.FC<ProductsGridProps> = ({ products, prefs, isL
                 )}
               </div>
               {effectiveShowDetails && (
-                <div className={`pt-2 border-t border-gray-100 flex items-center justify-between ${isMedium ? 'flex-col items-start gap-1.5' : ''}`}>
+                <div className={`pt-2 border-t border-gray-100 flex flex-col items-start gap-1.5 ${isMedium ? '' : 'sm:flex-row sm:items-center sm:justify-between'}`}>
                   <div>{priceBlock(product, isMedium ? 'sm' : 'lg')}</div>
                   {isMedium ? (
                     <button onClick={e => { e.stopPropagation(); onAddToCart(product); }} className="w-full py-1.5 rounded-lg bg-[#F1EDFD] hover:bg-[#8067E8] text-[#8067E8] hover:text-white text-[11px] font-bold transition-colors cursor-pointer flex items-center justify-center gap-1"><ShoppingBag className="w-3.5 h-3.5" />Add</button>

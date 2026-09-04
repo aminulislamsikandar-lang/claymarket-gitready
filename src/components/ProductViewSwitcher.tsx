@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Eye, Grid3x3, LayoutGrid, List, Rows3, Image as ImageIcon, Check, Crop, Maximize2 } from 'lucide-react';
+import { Eye, Grid3x3, LayoutGrid, List, Rows3, Image as ImageIcon, Check, Crop, Maximize2, Columns3 } from 'lucide-react';
 import type { ProductViewLayout, ImageFitMode, ProductViewPreferences } from '../hooks/useProductViewPreferences';
 
 interface ProductViewSwitcherProps {
@@ -15,6 +15,7 @@ const LAYOUT_OPTIONS: { id: ProductViewLayout; label: string; hint: string; icon
   { id: 'list', label: 'List', hint: 'Rows with thumbnail + details', icon: <List className="w-4 h-4" /> },
   { id: 'details', label: 'Details', hint: 'Table-style rows with columns', icon: <Rows3 className="w-4 h-4" /> },
   { id: 'natural', label: 'Natural Fit', hint: 'No cropping — true image ratio', icon: <Maximize2 className="w-4 h-4" /> },
+  { id: 'mosaic', label: 'Mosaic Grid', hint: '3 per row, edge-to-edge with hairlines', icon: <Columns3 className="w-4 h-4" /> },
 ];
 
 /**
@@ -26,8 +27,8 @@ const LAYOUT_OPTIONS: { id: ProductViewLayout; label: string; hint: string; icon
 export const ProductViewSwitcher: React.FC<ProductViewSwitcherProps> = ({ prefs, onLayoutChange, onImageFitChange, onShowDetailsChange }) => {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const detailsLocked = prefs.layout === 'list' || prefs.layout === 'details';
-  const fitLocked = prefs.layout === 'natural';
+  const detailsLocked = prefs.layout === 'list' || prefs.layout === 'details' || prefs.layout === 'mosaic';
+  const fitLocked = prefs.layout === 'natural' || prefs.layout === 'mosaic';
 
   useEffect(() => {
     const handleOutside = (e: MouseEvent) => {
@@ -92,7 +93,7 @@ export const ProductViewSwitcher: React.FC<ProductViewSwitcherProps> = ({ prefs,
                 <ImageIcon className="w-3.5 h-3.5" /> Fit (No Crop)
               </button>
             </div>
-            {fitLocked && <p className="px-1.5 text-[10px] text-[#9C93BE]">Natural Fit already shows every image uncropped.</p>}
+            {fitLocked && <p className="px-1.5 text-[10px] text-[#9C93BE]">{prefs.layout === 'mosaic' ? 'Mosaic Grid always fills each tile edge-to-edge.' : 'Natural Fit already shows every image uncropped.'}</p>}
 
             <button
               onClick={() => onShowDetailsChange(!prefs.showDetails)}

@@ -5,14 +5,16 @@ import { useEffect, useState } from 'react';
  * switcher found in desktop file explorers, plus a couple of extras tuned for a
  * mobile shopping grid.
  *
- *  - large    : big cards, current default look (image + full details)
+ *  - large    : big cards, default look (tall portrait image + full details)
  *  - medium   : denser grid, more items per row, condensed details
  *  - list     : horizontal rows — thumbnail + details side by side
  *  - details  : table-like rows with an explicit column header (most metadata)
  *  - natural  : masonry-style grid where every image keeps its own aspect
  *               ratio — nothing is ever cropped
+ *  - mosaic   : tight Instagram-style 3-per-row grid, image-only, tiles
+ *               separated only by a hairline black divider
  */
-export type ProductViewLayout = 'large' | 'medium' | 'list' | 'details' | 'natural';
+export type ProductViewLayout = 'large' | 'medium' | 'list' | 'details' | 'natural' | 'mosaic';
 
 /** How the product thumbnail fills its frame in the fixed-height layouts. */
 export type ImageFitMode = 'cover' | 'contain';
