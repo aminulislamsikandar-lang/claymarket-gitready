@@ -21,6 +21,10 @@ interface ProductsGridProps {
 }
 
 const SKELETON_COUNT = 8;
+const MOSAIC_SKELETON_COUNT = 4;
+// 2 columns x 2 rows = exactly 4 tiles tall enough that they fill the
+// viewport on load, so images (not product details) dominate the screen.
+const MOSAIC_TILE_CLASS = 'h-[44vh] sm:h-[46vh]';
 
 const LAYOUT_CONTAINER_CLASS: Record<ProductViewPreferences['layout'], string> = {
   large: 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-5',
@@ -28,7 +32,7 @@ const LAYOUT_CONTAINER_CLASS: Record<ProductViewPreferences['layout'], string> =
   list: 'flex flex-col gap-3',
   details: 'flex flex-col gap-2',
   natural: 'columns-2 sm:columns-3 lg:columns-4 gap-4 [column-fill:_balance]',
-  mosaic: 'grid grid-cols-3 gap-[2px] bg-black rounded-2xl overflow-hidden',
+  mosaic: 'grid grid-cols-2 gap-[2px] bg-black overflow-hidden',
 };
 
 const priceBlock = (product: Product, size: 'sm' | 'lg') => {
@@ -55,7 +59,7 @@ export const ProductsGrid: React.FC<ProductsGridProps> = ({ products, prefs, isL
     if (layout === 'mosaic') {
       return (
         <div className={LAYOUT_CONTAINER_CLASS.mosaic}>
-          {Array.from({ length: 9 }).map((_, i) => <div key={`skeleton-${i}`} className="aspect-square shimmer-loading" />)}
+          {Array.from({ length: MOSAIC_SKELETON_COUNT }).map((_, i) => <div key={`skeleton-${i}`} className={`${MOSAIC_TILE_CLASS} shimmer-loading`} />)}
         </div>
       );
     }
@@ -117,13 +121,14 @@ export const ProductsGrid: React.FC<ProductsGridProps> = ({ products, prefs, isL
     </div>
   );
 
-  // --- Mosaic: tight 3-per-row grid, image-only, hairline black dividers ----------------------
+  // --- Mosaic: 2-per-row grid, image-only, hairline black dividers -----------------------------
+  // Sized so exactly 4 tiles (2x2) fill the screen — max area for images, none for details.
   if (layout === 'mosaic') {
     return (
       <>
         <div className={LAYOUT_CONTAINER_CLASS.mosaic}>
           {products.map(product => (
-            <div key={product.id} className="relative aspect-square bg-black overflow-hidden cursor-pointer">
+            <div key={product.id} className={`relative ${MOSAIC_TILE_CLASS} bg-black overflow-hidden cursor-pointer`}>
               <ProductImageViewer
                 images={product.images}
                 alt={product.name}
