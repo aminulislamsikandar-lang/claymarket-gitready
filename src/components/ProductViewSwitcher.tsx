@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Eye, Grid3x3, LayoutGrid, List, Rows3, Image as ImageIcon, Check, Crop, Maximize2, Columns3 } from 'lucide-react';
+import { Eye, Grid3x3, LayoutGrid, List, Rows3, Image as ImageIcon, Check, Crop, Maximize2, Grid2x2 } from 'lucide-react';
 import type { ProductViewLayout, ImageFitMode, ProductViewPreferences } from '../hooks/useProductViewPreferences';
 
 interface ProductViewSwitcherProps {
@@ -15,7 +15,7 @@ const LAYOUT_OPTIONS: { id: ProductViewLayout; label: string; hint: string; icon
   { id: 'list', label: 'List', hint: 'Rows with thumbnail + details', icon: <List className="w-4 h-4" /> },
   { id: 'details', label: 'Details', hint: 'Table-style rows with columns', icon: <Rows3 className="w-4 h-4" /> },
   { id: 'natural', label: 'Natural Fit', hint: 'No cropping — true image ratio', icon: <Maximize2 className="w-4 h-4" /> },
-  { id: 'mosaic', label: 'Mosaic Grid', hint: '3 per row, edge-to-edge with hairlines', icon: <Columns3 className="w-4 h-4" /> },
+  { id: 'mosaic', label: 'Mosaic Grid', hint: '2 per row, only 4 fill the screen', icon: <Grid2x2 className="w-4 h-4" /> },
 ];
 
 /**
