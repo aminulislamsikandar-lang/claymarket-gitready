@@ -1,14 +1,16 @@
 import React, { useState, useRef } from 'react';
-import { ArrowLeft, ChevronRight, MapPin, Phone, Clock, MessageSquare, UserPlus, UserCheck, Star, Heart, ShoppingBag, Share2, ShieldCheck, Plus, Camera, Pencil, Trash2, X, Loader2 } from 'lucide-react';
+import { ArrowLeft, ChevronRight, MapPin, Phone, Clock, MessageSquare, UserPlus, UserCheck, Star, Share2, ShieldCheck, Plus, Camera, Pencil, Trash2, X, Loader2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { MOCK_REVIEWS } from '../data/mockData';
 import { Shop, Product, ShopProductCategory } from '../types';
 import { AddEditProductModal } from './AddEditProductModal';
 import { EditShopDetailsModal } from './EditShopDetailsModal';
 import { CategoryPhotoManager } from './CategoryPhotoManager';
-import { ProductImageWithShimmer } from './ProductImageWithShimmer';
 import { EMPTY_SHOP_FALLBACK } from '../utils/fallbacks';
 import { apiRequest } from '../utils/api';
+import { ProductViewSwitcher } from './ProductViewSwitcher';
+import { ProductsGrid } from './ProductsGrid';
+import { useProductViewPreferences } from '../hooks/useProductViewPreferences';
 
 type CategoryWithPhotos = ShopProductCategory & { images?: string[] };
 
@@ -25,6 +27,7 @@ export const ShopProfileView: React.FC = () => {
   const [selectedPhotoCategory, setSelectedPhotoCategory] = useState<CategoryWithPhotos | null>(null);
   const [categoryPhotoOverrides, setCategoryPhotoOverrides] = useState<Record<string, string[]>>({});
   const [isProductsLoading, setIsProductsLoading] = useState(false);
+  const { prefs: productViewPrefs, setLayout: setProductViewLayout, setImageFit: setProductImageFit, setShowDetails: setProductShowDetails } = useProductViewPreferences();
   const productsGridRef = useRef<HTMLDivElement>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
@@ -83,6 +86,7 @@ export const ShopProfileView: React.FC = () => {
         {(shopCategories.length > 0 || isOwnerSeller) && (
           <div className="flex flex-wrap items-center gap-2">
             <button onClick={() => handleFilterChange('all')} className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${productCategoryFilter === 'all' ? 'bg-[#8067E8] text-white shadow-xs' : 'bg-[#F1EDFD] text-[#553BB8] hover:bg-[#DDD4FF]'}`}>All</button>
+            <ProductViewSwitcher prefs={productViewPrefs} onLayoutChange={setProductViewLayout} onImageFitChange={setProductImageFit} onShowDetailsChange={setProductShowDetails} />
             {shopCategories.map(cat => (
               <div key={cat.id} className={`flex items-center gap-1 pl-3.5 pr-1.5 py-1.5 rounded-full text-xs font-bold transition-all ${productCategoryFilter === cat.id ? 'bg-[#8067E8] text-white' : 'bg-[#F1EDFD] text-[#553BB8] hover:bg-[#DDD4FF]'}`}>
                 <button onClick={() => handleFilterChange(cat.id)} className="cursor-pointer font-bold" title={`View ${cat.name} products`}>{cat.name}</button>
@@ -106,45 +110,21 @@ export const ShopProfileView: React.FC = () => {
           </div>
         )}
 
-        <div key={productCategoryFilter} ref={productsGridRef} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
-          {isProductsLoading ? (
-            Array.from({ length: 8 }).map((_, i) => (
-              <div key={`skeleton-${i}`} className="bg-white rounded-3xl p-3.5 border border-white/90 shadow-sm">
-                <div className="w-full h-44 rounded-2xl shimmer-loading mb-3" />
-                <div className="h-3.5 w-3/4 rounded-full shimmer-loading mb-2" />
-                <div className="h-3 w-1/2 rounded-full shimmer-loading" />
-              </div>
-            ))
-          ) : filteredProducts.length === 0 ? (
-            <div className="col-span-full flex flex-col items-center justify-center text-center py-16 bg-white/60 rounded-3xl border border-dashed border-[#DDD4FF]">
-              <ShoppingBag className="w-10 h-10 text-[#8067E8] mb-3" />
-              <h3 className="font-bold text-[#20243A]">No products in this category yet</h3>
-              {isOwnerSeller && <p className="text-sm text-[#737B89] mt-1">Tap "+ Add Product" and assign it to this category.</p>}
-            </div>
-          ) : (
-            filteredProducts.map((product: Product) => (
-              <div key={product.id} onClick={() => navigateTo('product-detail', { product })} className="group bg-white rounded-3xl p-3.5 border border-white/90 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between cursor-pointer" style={{ boxShadow: '0 8px 24px -4px rgba(32, 36, 58, 0.04), inset 0 2px 3px rgba(255, 255, 255, 0.95)' }}>
-                <div>
-                  <div className="relative w-full h-44 rounded-2xl overflow-hidden bg-gray-100 mb-3">
-                    <ProductImageWithShimmer src={product.images[0]} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                    <button onClick={e => { e.stopPropagation(); toggleWishlist(product.id); }} className={`absolute top-2.5 right-2.5 p-2 rounded-full backdrop-blur-md transition-all ${isWishlisted(product.id) ? 'bg-[#FF6B8B] text-white' : 'bg-white/80 text-gray-700 hover:bg-white'}`}><Heart className="w-4 h-4 fill-current" /></button>
-                    {isOwnerSeller && <button onClick={e => { e.stopPropagation(); void handleDeleteProduct(product); }} disabled={deletingProductId === product.id} title="Delete product from shop" className="absolute top-2.5 left-2.5 z-10 p-2 rounded-full bg-white/90 hover:bg-red-500 text-red-500 hover:text-white backdrop-blur-md shadow-sm transition-all cursor-pointer disabled:opacity-60">{deletingProductId === product.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}</button>}
-                    <div className="absolute bottom-2 left-2 px-2.5 py-0.5 bg-[#176F43]/90 text-white rounded-md text-[10px] font-bold">In Stock</div>
-                  </div>
-                  <h3 className="font-bold text-sm text-[#20243A] group-hover:text-[#8067E8] transition-colors line-clamp-1 mb-1">{product.name}</h3>
-                  {product.sizes && product.sizes.length > 0 && <div className="flex items-center gap-1 mb-2"><span className="text-[10px] text-gray-400 font-semibold">Sizes:</span><span className="text-[10px] font-bold text-gray-700">{product.sizes.slice(0, 4).join(', ')}</span></div>}
-                  {product.description && <p className="text-xs text-[#737B89] line-clamp-2 mb-2 leading-relaxed">{product.description}</p>}
-                </div>
-                <div className="pt-2 border-t border-gray-100 flex items-center justify-between">
-                  <div>{product.price !== undefined && product.price !== null ? <div className="flex items-baseline gap-1.5"><span className="text-base font-extrabold text-[#20243A]">₹{product.price}</span>{product.originalPrice !== undefined && product.originalPrice !== null && product.originalPrice > product.price && <span className="text-xs text-gray-400 line-through">₹{product.originalPrice}</span>}</div> : <span className="text-xs font-bold text-[#8067E8]">Contact for Price</span>}</div>
-                  <div className="flex items-center gap-1.5">
-                    <button onClick={e => { e.stopPropagation(); startChatWithShop(shop, product, `Hi ${shop.ownerName}, is the "${product.name}" available?`); }} title="Ask Seller" className="p-2 rounded-xl bg-[#FAF8FE] hover:bg-[#DDD4FF] text-[#8067E8] transition-colors"><MessageSquare className="w-4 h-4" /></button>
-                    <button onClick={e => { e.stopPropagation(); addToCart(product); }} className="p-2 rounded-xl bg-[#F1EDFD] hover:bg-[#8067E8] text-[#8067E8] hover:text-white transition-colors cursor-pointer shadow-xs"><ShoppingBag className="w-4 h-4" /></button>
-                  </div>
-                </div>
-              </div>
-            ))
-          )}
+        <div key={productCategoryFilter} ref={productsGridRef} className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <ProductsGrid
+            products={filteredProducts}
+            prefs={productViewPrefs}
+            isLoading={isProductsLoading}
+            shop={shop}
+            isOwnerSeller={isOwnerSeller}
+            deletingProductId={deletingProductId}
+            isWishlisted={isWishlisted}
+            toggleWishlist={toggleWishlist}
+            onDeleteProduct={product => void handleDeleteProduct(product)}
+            onNavigate={product => navigateTo('product-detail', { product })}
+            onAsk={product => startChatWithShop(shop, product, `Hi ${shop.ownerName}, is the "${product.name}" available?`)}
+            onAddToCart={product => addToCart(product)}
+          />
         </div>
       </section>}
 
