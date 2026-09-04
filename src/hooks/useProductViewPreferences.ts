@@ -11,8 +11,8 @@ import { useEffect, useState } from 'react';
  *  - details  : table-like rows with an explicit column header (most metadata)
  *  - natural  : masonry-style grid where every image keeps its own aspect
  *               ratio — nothing is ever cropped
- *  - mosaic   : tight Instagram-style 3-per-row grid, image-only, tiles
- *               separated only by a hairline black divider
+ *  - mosaic   : 2-per-row, image-only grid sized so only 4 tiles (2x2) fill
+ *               the viewport at once — now the default view
  */
 export type ProductViewLayout = 'large' | 'medium' | 'list' | 'details' | 'natural' | 'mosaic';
 
@@ -25,10 +25,11 @@ export interface ProductViewPreferences {
   showDetails: boolean;
 }
 
-const STORAGE_KEY = 'cm_product_view_prefs_v1';
+// Bump the key so previously saved preferences reset to the new default view.
+const STORAGE_KEY = 'cm_product_view_prefs_v2';
 
 const DEFAULT_PREFS: ProductViewPreferences = {
-  layout: 'large',
+  layout: 'mosaic',
   imageFit: 'cover',
   showDetails: true,
 };
