@@ -6,10 +6,24 @@ import Razorpay from 'razorpay';
 import { Order } from '../models/Order.js';
 import { verifyRazorpaySignature } from '../utils/razorpaySignature.js';
 
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET,
-});
+// Lazily create the Razorpay client on first use instead of at import time.
+// Constructing it eagerly with missing keys throws during module load, which
+// crashes the entire server (every route, not just payments) if
+// RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET aren't set in the environment.
+let razorpayClient = null;
+
+const getRazorpay = () => {
+  if (razorpayClient) return razorpayClient;
+
+  const key_id = process.env.RAZORPAY_KEY_ID;
+  const key_secret = process.env.RAZORPAY_KEY_SECRET;
+  if (!key_id || !key_secret) {
+    throw new Error('Payments are not configured: RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET are missing.');
+  }
+
+  razorpayClient = new Razorpay({ key_id, key_secret });
+  return razorpayClient;
+};
 
 /** Step 1: buyer clicks "Pay now" — create a Razorpay order tied to our order's amount. */
 export const createRazorpayOrder = async (req, res) => {
@@ -20,6 +34,13 @@ export const createRazorpayOrder = async (req, res) => {
   const order = await Order.findOne({ _id: orderId, buyerId });
   if (!order) return res.status(404).json({ error: 'Order not found.' });
   if (order.paymentStatus === 'paid') return res.status(400).json({ error: 'This order is already paid.' });
+
+  let razorpay;
+  try {
+    razorpay = getRazorpay();
+  } catch (err) {
+    return res.status(503).json({ error: 'Payments are temporarily unavailable.', detail: err.message });
+  }
 
   try {
     const rpOrder = await razorpay.orders.create({
