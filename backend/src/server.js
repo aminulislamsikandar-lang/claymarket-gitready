@@ -30,7 +30,7 @@ app.use((req, res, next) => {
   res.setHeader('X-Request-Id', req.id);
   next();
 });
-app.use(helmet({ contentSecurityPolicy: false }));
+app.use(helmet({ contentSecurityPolicy: false })); // JSON-only API; CSP belongs on the HTML-serving frontend (see deploy/nginx.conf)
 app.use(compression());
 app.use(cors({ origin: allowedOrigins, credentials: true, methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'], allowedHeaders: ['Content-Type','Authorization','X-Request-Id'] }));
 app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '1mb' }));
