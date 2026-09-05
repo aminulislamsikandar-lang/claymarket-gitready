@@ -8,7 +8,7 @@ import {
   MOCK_CATEGORIES, INITIAL_ORDERS 
 } from '../data/mockData';
 import { apiRequest, clearAuthToken, setAuthToken } from '../utils/api';
-import { firebaseAuthClient, firebaseDb, firebaseConfigured } from '../firebase';
+import { firebaseAuthClient, firebaseDb, firebaseConfigured, requireFirebase } from '../firebase';
 import {
   createUserWithEmailAndPassword,
   deleteUser,
@@ -565,9 +565,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [followedShops, setFollowedShops] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem('claymarket_followed_shops') || '[]'); } catch { return []; }
   });
-  useEffect(() => { try { localStorage.setItem('claymarket_cart', JSON.stringify(cart)); } catch {} }, [cart]);
-  useEffect(() => { try { localStorage.setItem('claymarket_wishlist', JSON.stringify(wishlist)); } catch {} }, [wishlist]);
-  useEffect(() => { try { localStorage.setItem('claymarket_followed_shops', JSON.stringify(followedShops)); } catch {} }, [followedShops]);
+  useEffect(() => { try { localStorage.setItem('claymarket_cart', JSON.stringify(cart)); } catch { /* localStorage unavailable (private browsing, quota) — safe to ignore */ } }, [cart]);
+  useEffect(() => { try { localStorage.setItem('claymarket_wishlist', JSON.stringify(wishlist)); } catch { /* localStorage unavailable (private browsing, quota) — safe to ignore */ } }, [wishlist]);
+  useEffect(() => { try { localStorage.setItem('claymarket_followed_shops', JSON.stringify(followedShops)); } catch { /* localStorage unavailable (private browsing, quota) — safe to ignore */ } }, [followedShops]);
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
@@ -579,7 +579,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const list = await apiRequest<any[]>('/conversations');
       if (!Array.isArray(list)) return;
       const withMessages = await Promise.all(list.map(async (conv) => {
-        let rawMessages: any[] = [];
+        let rawMessages: any[];
         try { rawMessages = await apiRequest<any[]>(`/conversations/${conv._id}/messages`); } catch { rawMessages = []; }
         const lastReadAt = getConversationReads()[String(conv._id)] || 0;
         const unreadCount = rawMessages.filter((m) => idOf(m?.senderId) !== currentUser.id && (m?.createdAt ? new Date(m.createdAt).getTime() : 0) > lastReadAt).length;
@@ -760,7 +760,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       let email = value;
       if (!value.includes('@')) email = (await apiRequest<{ email: string }>('/auth/resolve-login', { method: 'POST', body: JSON.stringify({ identifier: value }) })).email;
       await finishFirebaseLogin(email.toLowerCase(), password);
-    } catch (error) { throw new Error(firebaseAuthError(error)); }
+    } catch (error) { throw new Error(firebaseAuthError(error), { cause: error }); }
   };
 
   const createFirebaseProfile = async (firebaseUser: FirebaseUser, data: Record<string, unknown>) => {
@@ -777,7 +777,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await credential.user.getIdToken(true); await updateProfile(credential.user, { displayName: data.name.trim() });
       await createFirebaseProfile(credential.user, { name: data.name.trim(), phone: data.phone?.trim() || '', role: 'buyer', avatar: credential.user.photoURL || '', addresses: [] });
       const user = await profileForUser(credential.user); setCurrentUser(user); setIsAuthModalOpen(false); showToast(`Welcome to Claymarket, ${data.name.trim()}!`, 'success');
-    } catch (error) { if (credential?.user) await deleteUser(credential.user).catch(() => {}); throw new Error(firebaseAuthError(error)); }
+    } catch (error) { if (credential?.user) await deleteUser(credential.user).catch(() => {}); throw new Error(firebaseAuthError(error), { cause: error }); }
     finally { manualAuthInProgressRef.current = false; }
   };
 
@@ -798,7 +798,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const user = await profileForUser(firebaseUser); setCurrentUser(user);
       const newShop: Shop = { id: shopId, name: shopName, marketId: selectedMarket.id, marketName: selectedMarket.name, state: data.shop.state.trim(), district: data.shop.district.trim(), categoryId: selectedCategory.id, categoryName: selectedCategory.name, avatar: shopDoc.profileImage, banner: shopDoc.coverImage, rating: 0, reviewsCount: 0, verified: false, followersCount: 0, about: '', phone: data.phone?.trim() || '', address: data.shop.address?.trim() || '', ownerId: firebaseUser.uid, ownerName: data.name.trim() };
       setShops(prev => [newShop, ...prev.filter(shop => shop.id !== shopId)]); setIsAuthModalOpen(false); showToast(`Congratulations! "${shopName}" is now open on Claymarket!`, 'success'); navigateTo('seller-dashboard');
-    } catch (error) { throw new Error(firebaseAuthError(error)); } finally { manualAuthInProgressRef.current = false; }
+    } catch (error) { throw new Error(firebaseAuthError(error), { cause: error }); } finally { manualAuthInProgressRef.current = false; }
   };
 
   const updateProfilePicture = async (file: File) => {
@@ -810,7 +810,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await withTimeout(updateProfile(firebaseUser, { photoURL: downloadUrl }), 10000, 'Profile picture uploaded, but your account could not be updated. Please try again.');
       await withTimeout(updateDoc(doc(firebaseDb, 'users', firebaseUser.uid), { avatar: downloadUrl, updatedAt: serverTimestamp() }), 10000, 'Profile picture uploaded, but your profile could not be saved. Please try again.');
       setCurrentUser(prev => ({ ...prev, avatar: downloadUrl })); showToast('Profile picture updated successfully.', 'success');
-    } catch (error) { throw new Error(error instanceof Error ? error.message : 'Could not update your profile picture. Please try again.'); }
+    } catch (error) { throw new Error(error instanceof Error ? error.message : 'Could not update your profile picture. Please try again.', { cause: error }); }
   };
 
   const logoutUser = async () => {
@@ -965,7 +965,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const updateShopImages = async (shopId: string, updates: { avatarFile?: File | null; bannerFile?: File | null; removeAvatar?: boolean; removeBanner?: boolean }): Promise<boolean> => {
     const target = shops.find(s => s.id === shopId); if (!target) { showToast('Shop not found.', 'error'); return false; } if (currentUser.role !== 'seller' || currentUser.shopId !== shopId) { showToast('You are not allowed to edit this shop.', 'error'); return false; } if (!firebaseDb) { showToast('Firebase is not fully configured. Enable Firestore first.', 'error'); return false; }
     const DEFAULT_AVATAR = ''; const DEFAULT_BANNER = '';
-    try { const fieldUpdate: Record<string, unknown> = {}; const shopUpdate: Partial<Shop> = {}; if (updates.avatarFile) { const validation = validateImageFile(updates.avatarFile); if (!validation.valid) { showToast(validation.error || 'Invalid image file.', 'error'); return false; } const url = await uploadToCloudinary(updates.avatarFile, `shops/${shopId}`); fieldUpdate.profileImage = url; shopUpdate.avatar = url; } else if (updates.removeAvatar) { fieldUpdate.profileImage = DEFAULT_AVATAR; shopUpdate.avatar = DEFAULT_AVATAR; } if (updates.bannerFile) { const validation = validateImageFile(updates.bannerFile); if (!validation.valid) { showToast(validation.error || 'Invalid image file.', 'error'); return false; } const url = await uploadToCloudinary(updates.bannerFile, `shops/${shopId}`); fieldUpdate.coverImage = url; shopUpdate.banner = url; } else if (updates.removeBanner) { fieldUpdate.coverImage = DEFAULT_BANNER; shopUpdate.banner = DEFAULT_BANNER; } if (!Object.keys(fieldUpdate).length) return false; fieldUpdate.updatedAt = serverTimestamp(); await updateDoc(doc(firebaseDb, 'shops', shopId), fieldUpdate); setShops(prev => prev.map(s => s.id === shopId ? { ...s, ...shopUpdate } : s)); showToast('Shop photo updated!', 'success'); return true; } catch (error) { showToast(error instanceof Error ? error.message : 'Unable to update shop photo.', 'error'); return false; }
+    try { const fieldUpdate: Record<string, unknown> = {}; const shopUpdate: Partial<Shop> = {}; if (updates.avatarFile) { const validation = validateImageFile(updates.avatarFile); if (!validation.valid) { showToast(validation.error || 'Invalid image file.', 'error'); return false; } const url = await uploadToCloudinary(updates.avatarFile, `shops/${shopId}`); fieldUpdate.profileImage = url; shopUpdate.avatar = url; } else if (updates.removeAvatar) { fieldUpdate.profileImage = DEFAULT_AVATAR; shopUpdate.avatar = DEFAULT_AVATAR; } if (updates.bannerFile) { const validation = validateImageFile(updates.bannerFile); if (!validation.valid) { showToast(validation.error || 'Invalid image file.', 'error'); return false; } const url = await uploadToCloudinary(updates.bannerFile, `shops/${shopId}`); fieldUpdate.coverImage = url; shopUpdate.banner = url; } else if (updates.removeBanner) { fieldUpdate.coverImage = DEFAULT_BANNER; shopUpdate.banner = DEFAULT_BANNER; } if (!Object.keys(fieldUpdate).length) return false; fieldUpdate.updatedAt = serverTimestamp(); // eslint-disable-next-line @typescript-eslint/no-explicit-any -- fieldUpdate is built dynamically field-by-field above; Firestore's UpdateData<T> can't express that statically.
+      await updateDoc(doc(requireFirebase().db, 'shops', shopId), fieldUpdate as any); setShops(prev => prev.map(s => s.id === shopId ? { ...s, ...shopUpdate } : s)); showToast('Shop photo updated!', 'success'); return true; } catch (error) { showToast(error instanceof Error ? error.message : 'Unable to update shop photo.', 'error'); return false; }
   };
 
   const updateShopDetails = async (shopId: string, updates: { phone?: string; address?: string; about?: string; openingHours?: string }): Promise<boolean> => {
@@ -975,8 +976,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const assertCategoryOwnership = (shopId: string): Shop | null => { const target = shops.find(s => s.id === shopId); if (!target) { showToast('Shop not found.', 'error'); return null; } if (currentUser.role !== 'seller' || currentUser.shopId !== shopId) { showToast('You are not allowed to edit this shop.', 'error'); return null; } return target; };
   const addShopCategory = async (shopId: string, name: string): Promise<boolean> => { const target = assertCategoryOwnership(shopId); if (!target) return false; if (!firebaseDb) { showToast('Firebase is not fully configured.', 'error'); return false; } const trimmed = name.trim(); if (!trimmed) { showToast('Category name is required.', 'warning'); return false; } const existing = target.productCategories || []; if (existing.some(c => c.name.toLowerCase() === trimmed.toLowerCase())) { showToast('A category with this name already exists.', 'warning'); return false; } const nextCategories = [...existing, { id: `shopcat_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, name: trimmed }]; try { await updateDoc(doc(firebaseDb, 'shops', shopId), { productCategories: nextCategories, updatedAt: serverTimestamp() }); setShops(prev => prev.map(s => s.id === shopId ? { ...s, productCategories: nextCategories } : s)); showToast(`Category "${trimmed}" added.`, 'success'); return true; } catch (error) { showToast(error instanceof Error ? error.message : 'Unable to add category.', 'error'); return false; } };
-  const updateShopCategory = async (shopId: string, categoryId: string, name: string): Promise<boolean> => { const target = assertCategoryOwnership(shopId); if (!target) return false; if (!firebaseDb) { showToast('Firebase is not fully configured.', 'error'); return false; } const trimmed = name.trim(); if (!trimmed) { showToast('Category name is required.', 'warning'); return false; } const nextCategories = (target.productCategories || []).map(c => c.id === categoryId ? { ...c, name: trimmed } : c); try { const batch = writeBatch(firebaseDb); batch.update(doc(firebaseDb, 'shops', shopId), { productCategories: nextCategories, updatedAt: serverTimestamp() }); products.filter(p => p.shopId === shopId && p.shopCategoryId === categoryId).forEach(p => batch.update(doc(firebaseDb, 'products', p.id), { shopCategoryName: trimmed, updatedAt: serverTimestamp() })); await batch.commit(); setShops(prev => prev.map(s => s.id === shopId ? { ...s, productCategories: nextCategories } : s)); setProducts(prev => prev.map(p => p.shopId === shopId && p.shopCategoryId === categoryId ? { ...p, shopCategoryName: trimmed } : p)); showToast('Category updated.', 'success'); return true; } catch (error) { showToast(error instanceof Error ? error.message : 'Unable to update category.', 'error'); return false; } };
-  const deleteShopCategory = async (shopId: string, categoryId: string): Promise<boolean> => { const target = assertCategoryOwnership(shopId); if (!target) return false; if (!firebaseDb) { showToast('Firebase is not fully configured.', 'error'); return false; } const nextCategories = (target.productCategories || []).filter(c => c.id !== categoryId); try { const batch = writeBatch(firebaseDb); batch.update(doc(firebaseDb, 'shops', shopId), { productCategories: nextCategories, updatedAt: serverTimestamp() }); products.filter(p => p.shopId === shopId && p.shopCategoryId === categoryId).forEach(p => batch.update(doc(firebaseDb, 'products', p.id), { shopCategoryId: deleteField(), shopCategoryName: deleteField(), updatedAt: serverTimestamp() })); await batch.commit(); setShops(prev => prev.map(s => s.id === shopId ? { ...s, productCategories: nextCategories } : s)); setProducts(prev => prev.map(p => p.shopId === shopId && p.shopCategoryId === categoryId ? { ...p, shopCategoryId: undefined, shopCategoryName: undefined } : p)); showToast('Category removed.', 'info'); return true; } catch (error) { showToast(error instanceof Error ? error.message : 'Unable to remove category.', 'error'); return false; } };
+  const updateShopCategory = async (shopId: string, categoryId: string, name: string): Promise<boolean> => { const target = assertCategoryOwnership(shopId); if (!target) return false; if (!firebaseDb) { showToast('Firebase is not fully configured.', 'error'); return false; } const trimmed = name.trim(); if (!trimmed) { showToast('Category name is required.', 'warning'); return false; } const nextCategories = (target.productCategories || []).map(c => c.id === categoryId ? { ...c, name: trimmed } : c); try { const batch = writeBatch(firebaseDb); batch.update(doc(firebaseDb, 'shops', shopId), { productCategories: nextCategories, updatedAt: serverTimestamp() }); products.filter(p => p.shopId === shopId && p.shopCategoryId === categoryId).forEach(p => batch.update(doc(requireFirebase().db, 'products', p.id), { shopCategoryName: trimmed, updatedAt: serverTimestamp() })); await batch.commit(); setShops(prev => prev.map(s => s.id === shopId ? { ...s, productCategories: nextCategories } : s)); setProducts(prev => prev.map(p => p.shopId === shopId && p.shopCategoryId === categoryId ? { ...p, shopCategoryName: trimmed } : p)); showToast('Category updated.', 'success'); return true; } catch (error) { showToast(error instanceof Error ? error.message : 'Unable to update category.', 'error'); return false; } };
+  const deleteShopCategory = async (shopId: string, categoryId: string): Promise<boolean> => { const target = assertCategoryOwnership(shopId); if (!target) return false; if (!firebaseDb) { showToast('Firebase is not fully configured.', 'error'); return false; } const nextCategories = (target.productCategories || []).filter(c => c.id !== categoryId); try { const batch = writeBatch(firebaseDb); batch.update(doc(firebaseDb, 'shops', shopId), { productCategories: nextCategories, updatedAt: serverTimestamp() }); products.filter(p => p.shopId === shopId && p.shopCategoryId === categoryId).forEach(p => batch.update(doc(requireFirebase().db, 'products', p.id), { shopCategoryId: deleteField(), shopCategoryName: deleteField(), updatedAt: serverTimestamp() })); await batch.commit(); setShops(prev => prev.map(s => s.id === shopId ? { ...s, productCategories: nextCategories } : s)); setProducts(prev => prev.map(p => p.shopId === shopId && p.shopCategoryId === categoryId ? { ...p, shopCategoryId: undefined, shopCategoryName: undefined } : p)); showToast('Category removed.', 'info'); return true; } catch (error) { showToast(error instanceof Error ? error.message : 'Unable to remove category.', 'error'); return false; } };
 
   const registerShop = (shopData: Partial<Shop>) => { showToast('Please use the seller registration flow to create a shop.', 'info'); navigateTo('seller-dashboard'); };
 

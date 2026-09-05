@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+
+# Replace the domain below with your real production domain
+# (same value as VITE_SITE_URL in your .env).
+Sitemap: https://claymarket.example.com/sitemap.xml
