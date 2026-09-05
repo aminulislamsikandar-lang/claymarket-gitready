@@ -14,6 +14,7 @@ import messageRoutes from './routes/messageRoutes.js';
 import searchRoutes from './routes/searchRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
 import reviewRoutes from './routes/reviewRoutes.js';
+import imageCommentRoutes from './routes/imageCommentRoutes.js';
 import { notFound, errorHandler } from './middleware/errorHandler.js';
 import { apiLimiter, authLimiter } from './middleware/rateLimit.js';
 
@@ -29,7 +30,7 @@ app.use((req, res, next) => {
   res.setHeader('X-Request-Id', req.id);
   next();
 });
-app.use(helmet({ contentSecurityPolicy: false })); // JSON-only API; CSP belongs on the HTML-serving frontend (see deploy/nginx.conf)
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(compression());
 app.use(cors({ origin: allowedOrigins, credentials: true, methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'], allowedHeaders: ['Content-Type','Authorization','X-Request-Id'] }));
 app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '1mb' }));
@@ -50,6 +51,7 @@ app.use('/api/conversations', messageRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/reviews', reviewRoutes);
+app.use('/api/image-comments', imageCommentRoutes);
 
 app.use(notFound);
 app.use(errorHandler);
