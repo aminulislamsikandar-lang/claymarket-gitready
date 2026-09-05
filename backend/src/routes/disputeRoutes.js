@@ -1,13 +1,13 @@
 // backend/src/routes/disputeRoutes.js
 import { Router } from 'express';
 import { createDispute, listMyDisputes, listShopDisputes, respondToDispute } from '../controllers/disputeController.js';
-import { requireAuth } from '../middleware/requireAuth.js';
+import { authenticateUser } from '../middleware/auth.js';
 
 const router = Router();
 
-router.post('/', requireAuth, createDispute);
-router.get('/mine', requireAuth, listMyDisputes);
-router.get('/shop/:shopId', requireAuth, listShopDisputes); // add seller-ownership check in requireAuth or here
-router.patch('/:id', requireAuth, respondToDispute);
+router.post('/', authenticateUser, createDispute);
+router.get('/mine', authenticateUser, listMyDisputes);
+router.get('/shop/:shopId', authenticateUser, listShopDisputes); // add seller-ownership check in requireAuth or here
+router.patch('/:id', authenticateUser, respondToDispute);
 
 export default router;
