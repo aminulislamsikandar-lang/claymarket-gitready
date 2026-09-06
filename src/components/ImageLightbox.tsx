@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from 'lucide-react';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 interface ImageLightboxProps {
   images: string[];
@@ -23,6 +24,7 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({ images, startIndex
   const [origin, setOrigin] = useState('50% 50%');
   const touchStartX = useRef<number | null>(null);
   const touchStartY = useRef<number | null>(null);
+  const modalRef = useFocusTrap(true, onClose);
 
   const safeImages = images.length > 0 ? images : [''];
   const goTo = (next: number) => {
@@ -34,8 +36,7 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({ images, startIndex
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-      else if (e.key === 'ArrowLeft') goPrev();
+      if (e.key === 'ArrowLeft') goPrev();
       else if (e.key === 'ArrowRight') goNext();
     };
     window.addEventListener('keydown', handleKey);
@@ -72,6 +73,7 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({ images, startIndex
 
   return (
     <div
+      ref={modalRef}
       className="fixed inset-0 z-[100] bg-[#15192C]/95 backdrop-blur-sm flex items-center justify-center animate-in fade-in duration-200"
       onClick={onClose}
       role="dialog"
@@ -82,6 +84,7 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({ images, startIndex
         onClick={e => { e.stopPropagation(); onClose(); }}
         className="absolute top-4 right-4 sm:top-6 sm:right-6 z-10 p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white backdrop-blur-md transition-all cursor-pointer"
         title="Close"
+        aria-label="Close image viewer"
       >
         <X className="w-5 h-5" />
       </button>
@@ -98,6 +101,7 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({ images, startIndex
             onClick={e => { e.stopPropagation(); goPrev(); }}
             className="absolute left-2 sm:left-6 top-1/2 -translate-y-1/2 z-10 p-2.5 sm:p-3 rounded-full bg-white/10 hover:bg-white/25 text-white backdrop-blur-md transition-all cursor-pointer"
             title="Previous image"
+            aria-label="Previous image"
           >
             <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
@@ -105,6 +109,7 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({ images, startIndex
             onClick={e => { e.stopPropagation(); goNext(); }}
             className="absolute right-2 sm:right-6 top-1/2 -translate-y-1/2 z-10 p-2.5 sm:p-3 rounded-full bg-white/10 hover:bg-white/25 text-white backdrop-blur-md transition-all cursor-pointer"
             title="Next image"
+            aria-label="Next image"
           >
             <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
@@ -132,6 +137,7 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({ images, startIndex
         onClick={e => { e.stopPropagation(); setZoomed(z => !z); }}
         className="absolute bottom-5 sm:bottom-8 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-bold backdrop-blur-md transition-all cursor-pointer"
         title={zoomed ? 'Zoom out' : 'Zoom in'}
+        aria-label={zoomed ? 'Zoom out' : 'Zoom in'}
       >
         {zoomed ? <ZoomOut className="w-4 h-4" /> : <ZoomIn className="w-4 h-4" />}
         <span>{zoomed ? 'Zoom out' : 'Zoom in'}</span>

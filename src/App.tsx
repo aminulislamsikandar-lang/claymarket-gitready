@@ -13,6 +13,7 @@ import { AuthModal } from './components/AuthModal';
 import { CookieConsent } from './components/CookieConsent';
 import { Analytics } from './components/Analytics';
 import { SEO } from './components/SEO';
+import { ProductImageCommentsEnhancer } from './components/ProductImageCommentsEnhancer';
 
 // Everything below is only needed once someone navigates away from the
 // homepage, so it is code-split into its own chunk instead of bloating the
@@ -153,6 +154,7 @@ const AppContent: React.FC = () => {
       <MessagingDrawer />
       <CartDrawer />
       <AuthModal />
+      <ProductImageCommentsEnhancer />
 
       {/* Toast Notifications */}
       {toasts.length > 0 && (

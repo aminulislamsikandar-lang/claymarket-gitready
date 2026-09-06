@@ -14,6 +14,7 @@ import messageRoutes from './routes/messageRoutes.js';
 import searchRoutes from './routes/searchRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
 import reviewRoutes from './routes/reviewRoutes.js';
+import imageCommentRoutes from './routes/imageCommentRoutes.js';
 import { notFound, errorHandler } from './middleware/errorHandler.js';
 import { apiLimiter, authLimiter } from './middleware/rateLimit.js';
 
@@ -50,6 +51,7 @@ app.use('/api/conversations', messageRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/reviews', reviewRoutes);
+app.use('/api/image-comments', imageCommentRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

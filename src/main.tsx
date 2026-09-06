@@ -20,6 +20,16 @@ if (typeof window !== 'undefined') {
   } catch {
     // localStorage may be unavailable/restricted; Firebase remains the source of truth.
   }
+
+  // Register the PWA service worker in production only. The worker provides
+  // app-shell caching without intercepting cross-origin Firebase/API requests.
+  if ('serviceWorker' in navigator && import.meta.env.PROD) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/service-worker.js').catch((error) => {
+        console.warn('Claymarket service worker registration failed:', error);
+      });
+    });
+  }
 }
 
 // Global broken-image fallback. Product/shop photos can come from many

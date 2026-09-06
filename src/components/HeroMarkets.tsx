@@ -1,8 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, MapPin, ArrowRight, Store, ShoppingBag, ArrowUpRight, Loader2 } from 'lucide-react';
+import { Search, MapPin, ArrowRight, Store, ShoppingBag, ArrowUpRight, Loader2, Download } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { HeroClayIllustration } from './ClayIllustrations';
 import { searchPlaces, PlaceSuggestion } from '../utils/geocoding';
+
+interface BeforeInstallPromptEvent extends Event {
+  readonly platforms: string[];
+  readonly userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+  prompt(): Promise<void>;
+}
 
 export const HeroMarkets: React.FC = () => {
   const { 
@@ -14,9 +20,32 @@ export const HeroMarkets: React.FC = () => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [placeSuggestions, setPlaceSuggestions] = useState<PlaceSuggestion[]>([]);
   const [isLoadingPlaces, setIsLoadingPlaces] = useState(false);
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const searchBoxRef = useRef<HTMLDivElement>(null);
   const placesDebounceRef = useRef<number | null>(null);
   const placesRequestIdRef = useRef(0);
+
+  // Capture the browser's PWA install prompt so the hero button can trigger it.
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setDeferredInstallPrompt(event as BeforeInstallPromptEvent);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredInstallPrompt) {
+      showToast('To install Claymarket, use your browser menu and choose "Install app" or "Add to Home screen".', 'info');
+      return;
+    }
+
+    await deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    setDeferredInstallPrompt(null);
+  };
 
   // Sync external search query
   useEffect(() => {
@@ -282,8 +311,8 @@ export const HeroMarkets: React.FC = () => {
             )}
           </div>
 
-          {/* Near Me Button (Optional pill matching reference) */}
-          <div className="flex items-center gap-2 sm:gap-3 pt-0.5 sm:pt-1">
+          {/* Hero actions */}
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 pt-0.5 sm:pt-1">
             <button
               id="hero-near-me-btn"
               onClick={handleNearMeClick}
@@ -297,6 +326,21 @@ export const HeroMarkets: React.FC = () => {
               </div>
               <span>Near me</span>
             </button>
+
+            <button
+              id="hero-install-app-btn"
+              type="button"
+              onClick={handleInstallClick}
+              aria-label="Install Claymarket app"
+              className="inline-flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 sm:px-5 sm:py-2.5 bg-[#8067E8] hover:bg-[#6E52E2] active:scale-95 text-white rounded-full text-xs sm:text-sm font-bold shadow-md transition-all cursor-pointer shrink-0"
+              style={{
+                boxShadow: '0 4px 14px rgba(128, 103, 232, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.2)'
+              }}
+            >
+              <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span>Install App</span>
+            </button>
+
             <span className="text-[11px] sm:text-xs text-[#737B89] line-clamp-1">Explore markets near your current location</span>
           </div>
 

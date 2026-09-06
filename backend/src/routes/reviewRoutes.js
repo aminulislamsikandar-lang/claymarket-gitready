@@ -1,8 +1,14 @@
+// backend/src/routes/reviewRoutes.js
 import { Router } from 'express';
+import { listProductReviews, createReview, deleteReview } from '../controllers/reviewController.js';
+// requireAuth is your existing auth middleware — same one used to protect
+// order/profile routes. Adjust the import path to match your project.
 import { authenticateUser } from '../middleware/auth.js';
-import { createReview, listProductReviews, listShopReviews } from '../controllers/reviewController.js';
+
 const router = Router();
-router.get('/product/:productId', listProductReviews);
-router.get('/shop/:shopId', listShopReviews);
+
+router.get('/products/:productId', listProductReviews); // public — anyone can read reviews
 router.post('/', authenticateUser, createReview);
+router.delete('/:id', authenticateUser, deleteReview);
+
 export default router;
