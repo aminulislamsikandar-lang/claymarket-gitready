@@ -7,6 +7,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { shareOrCopy } from '../utils/share';
 import { EMPTY_SHOP_FALLBACK, EMPTY_MARKET_FALLBACK } from '../utils/fallbacks';
+import { ImageCommentsModal } from './ImageCommentsModal';
 
 export const ProductDetailView: React.FC = () => {
   const { 
@@ -27,6 +28,7 @@ export const ProductDetailView: React.FC = () => {
   const [selectedColor, setSelectedColor] = useState<string>(defaultColorName);
   const [quantity, setQuantity] = useState(1);
   const [isImageZoomed, setIsImageZoomed] = useState(false);
+  const [commentsOpen, setCommentsOpen] = useState(false);
 
   const stockKnown = product.stockCount !== undefined && product.stockCount !== null;
   const stockAvailable = stockKnown ? product.stockCount! : 999;
@@ -448,6 +450,16 @@ export const ProductDetailView: React.FC = () => {
           >
             <X className="w-6 h-6" />
           </button>
+          <button
+            type="button"
+            onClick={(event) => { event.stopPropagation(); setCommentsOpen(true); }}
+            aria-label="Comments on this image"
+            title="Comments on this image"
+            className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[102] flex items-center gap-2 px-4 py-2 rounded-full bg-white/15 hover:bg-white/25 text-white text-xs font-bold backdrop-blur-md transition-colors"
+          >
+            <MessageSquare className="w-4 h-4" />
+            <span>Comments</span>
+          </button>
           <img
             src={product.images[selectedImageIndex] || product.images[0]}
             alt={`${product.name} enlarged`}
@@ -455,6 +467,16 @@ export const ProductDetailView: React.FC = () => {
             onClick={(event) => event.stopPropagation()}
           />
         </div>
+      )}
+
+      {commentsOpen && (
+        <ImageCommentsModal
+          productId={product.id}
+          productName={product.name}
+          imageUrl={product.images[selectedImageIndex] || product.images[0]}
+          imageIndex={selectedImageIndex}
+          onClose={() => setCommentsOpen(false)}
+        />
       )}
 
     </div>

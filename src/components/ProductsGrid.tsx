@@ -143,7 +143,7 @@ export const ProductsGrid: React.FC<ProductsGridProps> = ({ products, prefs, isL
             </div>
           ))}
         </div>
-        {lightbox && <ImageLightbox images={lightbox.product.images} startIndex={lightbox.index} title={lightbox.product.name} onClose={() => setLightbox(null)} />}
+        {lightbox && <ImageLightbox images={lightbox.product.images} startIndex={lightbox.index} title={lightbox.product.name} productId={lightbox.product.id} onClose={() => setLightbox(null)} />}
       </>
     );
   }
@@ -195,7 +195,7 @@ export const ProductsGrid: React.FC<ProductsGridProps> = ({ products, prefs, isL
             </div>
           ))}
         </div>
-        {lightbox && <ImageLightbox images={lightbox.product.images} startIndex={lightbox.index} title={lightbox.product.name} onClose={() => setLightbox(null)} />}
+        {lightbox && <ImageLightbox images={lightbox.product.images} startIndex={lightbox.index} title={lightbox.product.name} productId={lightbox.product.id} onClose={() => setLightbox(null)} />}
       </>
     );
   }
@@ -248,7 +248,7 @@ export const ProductsGrid: React.FC<ProductsGridProps> = ({ products, prefs, isL
           </div>
         ))}
       </div>
-      {lightbox && <ImageLightbox images={lightbox.product.images} startIndex={lightbox.index} title={lightbox.product.name} onClose={() => setLightbox(null)} />}
+      {lightbox && <ImageLightbox images={lightbox.product.images} startIndex={lightbox.index} title={lightbox.product.name} productId={lightbox.product.id} onClose={() => setLightbox(null)} />}
     </>
   );
 };
