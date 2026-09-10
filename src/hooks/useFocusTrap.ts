@@ -16,7 +16,10 @@ export function useFocusTrap(isOpen: boolean, onClose: () => void) {
     );
     const first = focusable?.[0];
     const last = focusable?.[focusable.length - 1];
-    first?.focus();
+    // preventScroll: focusing the first element shouldn't force the page/modal
+    // to jump back to it — without this the browser's default scroll-into-view
+    // behavior fights any manual scrolling the user does inside the modal.
+    first?.focus({ preventScroll: true });
 
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -26,10 +29,10 @@ export function useFocusTrap(isOpen: boolean, onClose: () => void) {
       if (e.key === 'Tab' && focusable && focusable.length > 0) {
         if (e.shiftKey && document.activeElement === first) {
           e.preventDefault();
-          last?.focus();
+          last?.focus({ preventScroll: true });
         } else if (!e.shiftKey && document.activeElement === last) {
           e.preventDefault();
-          first?.focus();
+          first?.focus({ preventScroll: true });
         }
       }
     };
@@ -37,7 +40,7 @@ export function useFocusTrap(isOpen: boolean, onClose: () => void) {
     document.addEventListener('keydown', handleKey);
     return () => {
       document.removeEventListener('keydown', handleKey);
-      triggerRef.current?.focus();
+      triggerRef.current?.focus({ preventScroll: true });
       triggerRef.current = null;
     };
   }, [isOpen]);
