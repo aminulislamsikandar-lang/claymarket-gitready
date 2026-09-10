@@ -3,6 +3,8 @@ import { useEffect, useRef } from 'react';
 export function useFocusTrap(isOpen: boolean, onClose: () => void) {
   const ref = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!isOpen) return;
@@ -18,7 +20,7 @@ export function useFocusTrap(isOpen: boolean, onClose: () => void) {
 
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key === 'Tab' && focusable && focusable.length > 0) {
@@ -38,7 +40,7 @@ export function useFocusTrap(isOpen: boolean, onClose: () => void) {
       triggerRef.current?.focus();
       triggerRef.current = null;
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   return ref;
 }
