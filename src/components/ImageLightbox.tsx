@@ -1,11 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, MessageSquare } from 'lucide-react';
 import { useFocusTrap } from '../hooks/useFocusTrap';
+import { ImageCommentsModal } from './ImageCommentsModal';
 
 interface ImageLightboxProps {
   images: string[];
   startIndex: number;
   title?: string;
+  /** When provided, shows a "Comments" button that opens the comment thread for the image currently in view. */
+  productId?: string;
   onClose: () => void;
 }
 
@@ -18,10 +21,11 @@ const SWIPE_THRESHOLD = 50;
  *    between a product's photos.
  *  - Esc, the backdrop, or the close button dismiss the viewer.
  */
-export const ImageLightbox: React.FC<ImageLightboxProps> = ({ images, startIndex, title, onClose }) => {
+export const ImageLightbox: React.FC<ImageLightboxProps> = ({ images, startIndex, title, productId, onClose }) => {
   const [index, setIndex] = useState(startIndex);
   const [zoomed, setZoomed] = useState(false);
   const [origin, setOrigin] = useState('50% 50%');
+  const [commentsOpen, setCommentsOpen] = useState(false);
   const touchStartX = useRef<number | null>(null);
   const touchStartY = useRef<number | null>(null);
   const modalRef = useFocusTrap(true, onClose);
@@ -133,16 +137,40 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({ images, startIndex
         />
       </div>
 
-      <button
-        onClick={e => { e.stopPropagation(); setZoomed(z => !z); }}
-        className="absolute bottom-5 sm:bottom-8 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-bold backdrop-blur-md transition-all cursor-pointer"
-        title={zoomed ? 'Zoom out' : 'Zoom in'}
-        aria-label={zoomed ? 'Zoom out' : 'Zoom in'}
-      >
-        {zoomed ? <ZoomOut className="w-4 h-4" /> : <ZoomIn className="w-4 h-4" />}
-        <span>{zoomed ? 'Zoom out' : 'Zoom in'}</span>
-        {safeImages.length > 1 && <span className="ml-1 pl-2 border-l border-white/25 text-white/70">{index + 1} / {safeImages.length}</span>}
-      </button>
+      <div className="absolute bottom-5 sm:bottom-8 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2">
+        <button
+          onClick={e => { e.stopPropagation(); setZoomed(z => !z); }}
+          className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-bold backdrop-blur-md transition-all cursor-pointer"
+          title={zoomed ? 'Zoom out' : 'Zoom in'}
+          aria-label={zoomed ? 'Zoom out' : 'Zoom in'}
+        >
+          {zoomed ? <ZoomOut className="w-4 h-4" /> : <ZoomIn className="w-4 h-4" />}
+          <span>{zoomed ? 'Zoom out' : 'Zoom in'}</span>
+          {safeImages.length > 1 && <span className="ml-1 pl-2 border-l border-white/25 text-white/70">{index + 1} / {safeImages.length}</span>}
+        </button>
+
+        {productId && (
+          <button
+            onClick={e => { e.stopPropagation(); setCommentsOpen(true); }}
+            className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-bold backdrop-blur-md transition-all cursor-pointer"
+            title="Comments on this image"
+            aria-label="Comments on this image"
+          >
+            <MessageSquare className="w-4 h-4" />
+            <span>Comments</span>
+          </button>
+        )}
+      </div>
+
+      {commentsOpen && productId && (
+        <ImageCommentsModal
+          productId={productId}
+          productName={title || 'Product'}
+          imageUrl={safeImages[index]}
+          imageIndex={index}
+          onClose={() => setCommentsOpen(false)}
+        />
+      )}
     </div>
   );
 };

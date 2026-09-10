@@ -22,6 +22,8 @@ interface ProductsGridProps {
 
 const SKELETON_COUNT = 8;
 const MOSAIC_SKELETON_COUNT = 4;
+// 2 columns x 2 rows = exactly 4 tiles tall enough that they fill the
+// viewport on load, so images (not product details) dominate the screen.
 const MOSAIC_TILE_CLASS = 'h-[44vh] sm:h-[46vh]';
 
 const LAYOUT_CONTAINER_CLASS: Record<ProductViewPreferences['layout'], string> = {
@@ -119,7 +121,8 @@ export const ProductsGrid: React.FC<ProductsGridProps> = ({ products, prefs, isL
     </div>
   );
 
-  // --- Mosaic: 2-per-row grid sized so exactly 4 tiles fill the screen -------------------------
+  // --- Mosaic: 2-per-row grid, image-only, hairline black dividers -----------------------------
+  // Sized so exactly 4 tiles (2x2) fill the screen — max area for images, none for details.
   if (layout === 'mosaic') {
     return (
       <>
@@ -140,7 +143,7 @@ export const ProductsGrid: React.FC<ProductsGridProps> = ({ products, prefs, isL
             </div>
           ))}
         </div>
-        {lightbox && <ImageLightbox images={lightbox.product.images} startIndex={lightbox.index} title={lightbox.product.name} onClose={() => setLightbox(null)} />}
+        {lightbox && <ImageLightbox images={lightbox.product.images} startIndex={lightbox.index} title={lightbox.product.name} productId={lightbox.product.id} onClose={() => setLightbox(null)} />}
       </>
     );
   }
@@ -192,7 +195,7 @@ export const ProductsGrid: React.FC<ProductsGridProps> = ({ products, prefs, isL
             </div>
           ))}
         </div>
-        {lightbox && <ImageLightbox images={lightbox.product.images} startIndex={lightbox.index} title={lightbox.product.name} onClose={() => setLightbox(null)} />}
+        {lightbox && <ImageLightbox images={lightbox.product.images} startIndex={lightbox.index} title={lightbox.product.name} productId={lightbox.product.id} onClose={() => setLightbox(null)} />}
       </>
     );
   }
@@ -245,7 +248,7 @@ export const ProductsGrid: React.FC<ProductsGridProps> = ({ products, prefs, isL
           </div>
         ))}
       </div>
-      {lightbox && <ImageLightbox images={lightbox.product.images} startIndex={lightbox.index} title={lightbox.product.name} onClose={() => setLightbox(null)} />}
+      {lightbox && <ImageLightbox images={lightbox.product.images} startIndex={lightbox.index} title={lightbox.product.name} productId={lightbox.product.id} onClose={() => setLightbox(null)} />}
     </>
   );
 };
