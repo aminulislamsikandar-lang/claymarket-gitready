@@ -98,7 +98,7 @@ export const AddEditProductModal: React.FC<AddEditProductModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="product-modal-title" className="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-7 space-y-5 shadow-2xl border border-gray-100 my-auto animate-in zoom-in-95 duration-150 max-h-[92vh] overflow-y-auto" style={{ boxShadow: '0 20px 40px -15px rgba(32, 36, 58, 0.2), 0 0 0 1px rgba(128, 103, 232, 0.08)' }}>
         <div className="flex items-center justify-between pb-3 border-b border-gray-100">
           <div><h3 id="product-modal-title" className="font-extrabold text-lg sm:text-xl text-[#20243A]">{editingProduct ? 'Edit Product' : 'Add Product'}</h3><p className="text-xs text-[#737B89] mt-0.5">{editingProduct ? 'Update product details & photos for your shop' : 'Upload photos and list a new product for local buyers'}</p></div>
