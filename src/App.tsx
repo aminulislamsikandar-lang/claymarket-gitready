@@ -126,6 +126,10 @@ const AppContent: React.FC = () => {
 
             {/* 4. Browse by Categories (Image 1) */}
             <BrowseByCategories />
+            
+            {/* 4b. Flipkart/Meesho-style product recommendation rows — real,
+                 live products only (Recommended, Slippers, Clothes) */}
+            <HomeProductShowcase />
 
             {/* 5. About Us Banner Section (Image 1) */}
             <AboutUsSection />
