@@ -5,6 +5,7 @@ import { HeroMarkets } from './components/HeroMarkets';
 import { MarketsGrid } from './components/MarketsGrid';
 import { BrowseByShops } from './components/BrowseByShops';
 import { BrowseByCategories } from './components/BrowseByCategories';
+import { HomeProductShowcase } from './components/HomeProductShowcase'; 
 import { AboutUsSection } from './components/AboutUsSection';
 import { Footer } from './components/Footer';
 import { MessagingDrawer } from './components/MessagingDrawer';
@@ -125,6 +126,10 @@ const AppContent: React.FC = () => {
 
             {/* 4. Browse by Categories (Image 1) */}
             <BrowseByCategories />
+            
+            {/* 4b. Flipkart/Meesho-style product recommendation rows — real,
+                 live products only (Recommended, Slippers, Clothes) */}
+            <HomeProductShowcase />
 
             {/* 5. About Us Banner Section (Image 1) */}
             <AboutUsSection />
