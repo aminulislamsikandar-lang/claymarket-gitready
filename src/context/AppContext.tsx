@@ -514,8 +514,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [markets, categories]);
 
   const [currentView, setCurrentView] = useState<AppView>(() => pathToView(window.location.pathname));
-  const [activeNavTab, setActiveNavTab] = useState<NavigationTab>('markets');
-  const [viewHistory, setViewHistory] = useState<AppView[]>(['markets']);
+  const [activeNavTab, setActiveNavTab] = useState<NavigationTab>('home');
+  const [viewHistory, setViewHistory] = useState<AppView[]>(['home']);
 
   useEffect(() => {
     const syncRoute = () => {
