@@ -655,7 +655,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (params?.product) setSelectedProduct(params.product);
     if (params?.category) setSelectedCategory(params.category);
     if (params?.searchTerm !== undefined) setSearchQuery(params.searchTerm);
-    if (view === 'markets' || view === 'market-detail') setActiveNavTab('markets');
+    if (view === 'home') setActiveNavTab('home');
+    else if (view === 'markets' || view === 'market-detail') setActiveNavTab('markets');
     else if (view === 'shops' || view === 'shop-detail') setActiveNavTab('shops');
     else if (view === 'categories' || view === 'category-detail') setActiveNavTab('categories');
     else if (view === 'about') setActiveNavTab('about');
