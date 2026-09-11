@@ -5,6 +5,7 @@ import { HeroMarkets } from './components/HeroMarkets';
 import { MarketsGrid } from './components/MarketsGrid';
 import { BrowseByShops } from './components/BrowseByShops';
 import { BrowseByCategories } from './components/BrowseByCategories';
+import { HomeProductShowcase } from './components/HomeProductShowcase'; 
 import { AboutUsSection } from './components/AboutUsSection';
 import { Footer } from './components/Footer';
 import { MessagingDrawer } from './components/MessagingDrawer';
