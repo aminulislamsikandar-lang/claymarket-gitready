@@ -137,6 +137,7 @@ const AppContent: React.FC = () => {
           </>
         );
     }
+     };
 
   return (
     <div className="min-h-screen bg-[#F7F5F3] text-[#20243A] flex flex-col font-sans selection:bg-[#DDD4FF] selection:text-[#553BB8]">
