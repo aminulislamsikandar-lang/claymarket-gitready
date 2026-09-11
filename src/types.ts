@@ -197,11 +197,11 @@ export interface Review {
   comment: string;
   verifiedPurchase: boolean;
 }
-
-export type NavigationTab = 'markets' | 'shops' | 'categories' | 'about';
+export type NavigationTab = 'home' | 'markets' | 'shops' | 'categories' | 'about';
 
 export type AppView = 
-  | 'markets' 
+  | 'home'
+  | 'markets'
   | 'market-detail' 
   | 'shops' 
   | 'shop-detail' 
