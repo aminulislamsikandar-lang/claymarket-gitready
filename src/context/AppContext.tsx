@@ -665,8 +665,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const goBack = () => {
     if (viewHistory.length > 1) { window.history.back(); return; }
-    if (window.location.pathname !== '/') { window.history.pushState({ view: 'markets' }, '', '/'); setCurrentView('markets'); setActiveNavTab('markets'); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
-    setCurrentView('markets');
+    if (window.location.pathname !== '/') { window.history.pushState({ view: 'home' }, '', '/'); setCurrentView('home'); setActiveNavTab('home'); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+    setCurrentView('home');
   };
 
   const performSearch = (query: string) => setSearchQuery(query);
