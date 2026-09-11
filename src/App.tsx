@@ -112,31 +112,31 @@ const AppContent: React.FC = () => {
       case 'not-found':
         return <NotFoundPage />;
       case 'markets':
+        // Dedicated markets listing — just the grid, no hero or homepage
+        // sections. This is what the "Markets" nav tab now points to.
+        return <MarketsGrid />;
+      case 'home':
       default:
         return (
           <>
-            {/* 1. Hero Section (Image 1 top) */}
+            {/* 1. Hero Section (with search bar) */}
             <HeroMarkets />
 
-            {/* 2. All Markets Grid (Image 1 middle) */}
-            <MarketsGrid />
-
-            {/* 3. Browse by Shops (Placed BETWEEN All Markets and Browse by Categories) */}
+            {/* 2. Browse by Shops */}
             <BrowseByShops />
 
-            {/* 4. Browse by Categories (Image 1) */}
+            {/* 3. Browse by Categories */}
             <BrowseByCategories />
             
-            {/* 4b. Flipkart/Meesho-style product recommendation rows — real,
+            {/* 3b. Flipkart/Meesho-style product recommendation rows — real,
                  live products only (Recommended, Slippers, Clothes) */}
             <HomeProductShowcase />
 
-            {/* 5. About Us Banner Section (Image 1) */}
+            {/* 4. About Us Banner Section */}
             <AboutUsSection />
           </>
         );
     }
-  };
 
   return (
     <div className="min-h-screen bg-[#F7F5F3] text-[#20243A] flex flex-col font-sans selection:bg-[#DDD4FF] selection:text-[#553BB8]">
