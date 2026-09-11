@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { AppView } from '../types';
 
 const meta: Record<string,{title:string;description:string}> = {
+  home:{title:'Claymarket — Your Local Marketplace',description:'Find and explore markets, shops and products in your area on Claymarket.'},
   markets:{title:'Markets | Claymarket',description:'Explore local markets and discover neighborhood shops and products on Claymarket.'},
   shops:{title:'Shops | Claymarket',description:'Discover local shops and connect with sellers on Claymarket.'},
   categories:{title:'Categories | Claymarket',description:'Browse slippers, clothes, electronics, home and grocery categories on Claymarket.'},

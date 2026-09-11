@@ -57,7 +57,7 @@ export const OrdersView: React.FC = () => {
         </button>
 
         <div className="flex items-center gap-2 text-sm text-[#737B89]">
-          <span className="cursor-pointer hover:text-[#8067E8]" onClick={() => navigateTo('markets')}>Home</span>
+          <span className="cursor-pointer hover:text-[#8067E8]" onClick={() => navigateTo('home')}>Home</span>
           <ChevronRight className="w-3.5 h-3.5" />
           <span className="font-bold text-[#20243A]">My Orders</span>
         </div>

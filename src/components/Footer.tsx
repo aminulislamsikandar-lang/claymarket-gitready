@@ -14,7 +14,7 @@ export const Footer: React.FC = () => {
           {/* Brand Col (2 cols wide on desktop) */}
           <div className="lg:col-span-2 space-y-4">
             <div 
-              onClick={() => navigateTo('markets')} 
+                           onClick={() => navigateTo('home')} 
               className="flex items-center gap-3 cursor-pointer select-none group inline-flex"
             >
               <div className="w-10 h-10 rounded-2xl bg-[#8067E8] text-white flex items-center justify-center shadow-lg font-bold text-xl">

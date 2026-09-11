@@ -388,7 +388,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (/^\/markets\/[^/]+$/.test(cleanPath)) return 'market-detail';
     if (/^\/shops\/[^/]+$/.test(cleanPath)) return 'shop-detail';
     if (/^\/products\/[^/]+$/.test(cleanPath)) return 'product-detail';
-    if (cleanPath === '/') return 'markets';
+        if (cleanPath === '/markets') return 'markets';
+    if (cleanPath === '/') return 'home';
     return 'not-found';
   };
 
@@ -513,15 +514,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [markets, categories]);
 
   const [currentView, setCurrentView] = useState<AppView>(() => pathToView(window.location.pathname));
-  const [activeNavTab, setActiveNavTab] = useState<NavigationTab>('markets');
-  const [viewHistory, setViewHistory] = useState<AppView[]>(['markets']);
+  const [activeNavTab, setActiveNavTab] = useState<NavigationTab>('home');
+  const [viewHistory, setViewHistory] = useState<AppView[]>(['home']);
 
   useEffect(() => {
     const syncRoute = () => {
       const path = window.location.pathname.replace(/\/+$/, '') || '/';
       const view = pathToView(path);
       setCurrentView(view);
-      setActiveNavTab(view === 'shops' || view === 'shop-detail' ? 'shops' : view === 'categories' || view === 'category-detail' ? 'categories' : view === 'about' ? 'about' : 'markets');
+      setActiveNavTab(view === 'shops' || view === 'shop-detail' ? 'shops' : view === 'categories' || view === 'category-detail' ? 'categories' : view === 'about' ? 'about' : view === 'markets' || view === 'market-detail' ? 'markets' : 'home');
       const parts = path.split('/').filter(Boolean);
       const find = <T extends { id: string; slug?: string }>(items: T[], key?: string) => key ? items.find(item => item.id === key || item.slug === key) || null : null;
       if (view === 'market-detail') setSelectedMarket(find(markets, parts[1]) as Market | null);
@@ -647,14 +648,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setViewHistory(prev => [...prev, view]);
     setCurrentView(view);
     const slugOrId = (value?: { id: string; slug?: string } | null) => value?.slug || value?.id;
-    const nextPath = view === 'markets' ? '/' : view === 'shops' ? '/shops' : view === 'categories' ? '/categories' : view === 'about' ? '/about' : view === 'faq' ? '/faq' : view === 'privacy' ? '/privacy-policy' : view === 'terms' ? '/terms' : view === 'market-detail' && params?.market ? `/markets/${slugOrId(params.market)}` : view === 'category-detail' && params?.market && params?.category ? `/markets/${slugOrId(params.market)}/${slugOrId(params.category)}` : view === 'shop-detail' && params?.shop ? `/shops/${slugOrId(params.shop)}` : view === 'product-detail' && params?.product ? `/products/${slugOrId(params.product)}` : undefined;
+    const nextPath = view === 'home' ? '/' : view === 'markets' ? '/markets' : view === 'shops' ? '/shops' : view === 'categories' ? '/categories' : view === 'about' ? '/about' : view === 'faq' ? '/faq' : view === 'privacy' ? '/privacy-policy' : view === 'terms' ? '/terms' : view === 'market-detail' && params?.market ? `/markets/${slugOrId(params.market)}` : view === 'category-detail' && params?.market && params?.category ? `/markets/${slugOrId(params.market)}/${slugOrId(params.category)}` : view === 'shop-detail' && params?.shop ? `/shops/${slugOrId(params.shop)}` : view === 'product-detail' && params?.product ? `/products/${slugOrId(params.product)}` : undefined;
     if (nextPath && window.location.pathname !== nextPath) window.history.pushState({ view }, '', nextPath);
     if (params?.market) setSelectedMarket(params.market);
     if (params?.shop) setSelectedShop(params.shop);
     if (params?.product) setSelectedProduct(params.product);
     if (params?.category) setSelectedCategory(params.category);
     if (params?.searchTerm !== undefined) setSearchQuery(params.searchTerm);
-    if (view === 'markets' || view === 'market-detail') setActiveNavTab('markets');
+    if (view === 'home') setActiveNavTab('home');
+    else if (view === 'markets' || view === 'market-detail') setActiveNavTab('markets');
     else if (view === 'shops' || view === 'shop-detail') setActiveNavTab('shops');
     else if (view === 'categories' || view === 'category-detail') setActiveNavTab('categories');
     else if (view === 'about') setActiveNavTab('about');
@@ -663,8 +665,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const goBack = () => {
     if (viewHistory.length > 1) { window.history.back(); return; }
-    if (window.location.pathname !== '/') { window.history.pushState({ view: 'markets' }, '', '/'); setCurrentView('markets'); setActiveNavTab('markets'); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
-    setCurrentView('markets');
+    if (window.location.pathname !== '/') { window.history.pushState({ view: 'home' }, '', '/'); setCurrentView('home'); setActiveNavTab('home'); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+    setCurrentView('home');
   };
 
   const performSearch = (query: string) => setSearchQuery(query);
