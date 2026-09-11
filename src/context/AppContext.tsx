@@ -388,7 +388,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (/^\/markets\/[^/]+$/.test(cleanPath)) return 'market-detail';
     if (/^\/shops\/[^/]+$/.test(cleanPath)) return 'shop-detail';
     if (/^\/products\/[^/]+$/.test(cleanPath)) return 'product-detail';
-    if (cleanPath === '/') return 'markets';
+        if (cleanPath === '/markets') return 'markets';
+    if (cleanPath === '/') return 'home';
     return 'not-found';
   };
 
