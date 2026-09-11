@@ -39,7 +39,8 @@ export const Header: React.FC = () => {
   }, []);
 
   const handleNavClick = (tab: NavigationTab) => {
-    if (tab === 'markets') navigateTo('markets');
+    if (tab === 'home') navigateTo('home');
+    else if (tab === 'markets') navigateTo('markets');
     else if (tab === 'shops') navigateTo('shops');
     else if (tab === 'categories') navigateTo('categories');
     else if (tab === 'about') navigateTo('about');
@@ -55,7 +56,7 @@ export const Header: React.FC = () => {
           {/* LEFT: Logo & Tagline */}
           <div 
             id="brand-logo-btn"
-            onClick={() => navigateTo('markets')} 
+            onClick={() => navigateTo('home')} 
             className="flex items-center gap-3 cursor-pointer select-none group"
           >
             {/* Claymorphic Purple Logo Icon */}
@@ -78,14 +79,7 @@ export const Header: React.FC = () => {
 
           {/* CENTER: Navigation Tabs (Desktop) */}
           <nav className="hidden md:flex items-center space-x-1 lg:space-x-3 bg-white/70 px-4 py-1.5 rounded-full border border-white/80 shadow-sm">
-            <button
-              id="nav-tab-home"
-              onClick={() => navigateTo('markets')}
-              className="relative px-4 py-2 text-sm font-semibold rounded-full transition-all duration-200 text-[#505767] hover:text-[#20243A] hover:bg-gray-100/60"
-            >
-              Home
-            </button>
-            {(['markets', 'shops', 'categories', 'about'] as NavigationTab[]).map((tab) => {
+            {(['home', 'markets', 'shops', 'categories', 'about'] as NavigationTab[]).map((tab) => {
               const label = tab === 'about' ? 'About Us' : tab.charAt(0).toUpperCase() + tab.slice(1);
               const isActive = activeNavTab === tab;
               return (
@@ -265,16 +259,7 @@ export const Header: React.FC = () => {
       {isMobileMenuOpen && (
         <div className="md:hidden bg-white border-b border-gray-200 px-6 py-4 space-y-3 animate-in slide-in-from-top-4 duration-200">
           <div className="space-y-1">
-            <button
-              onClick={() => {
-                navigateTo('markets');
-                setIsMobileMenuOpen(false);
-              }}
-              className="w-full text-left px-4 py-2.5 rounded-xl font-semibold text-sm transition-colors text-[#20243A] hover:bg-gray-50"
-            >
-              Home
-            </button>
-            {(['markets', 'shops', 'categories', 'about'] as NavigationTab[]).map((tab) => (
+            {(['home', 'markets', 'shops', 'categories', 'about'] as NavigationTab[]).map((tab) => (
               <button
                 key={tab}
                 onClick={() => handleNavClick(tab)}
