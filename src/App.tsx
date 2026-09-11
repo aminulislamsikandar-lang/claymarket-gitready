@@ -59,26 +59,16 @@ const AppContent: React.FC = () => {
   const [initialRouteResolved, setInitialRouteResolved] = useState(false);
 
   useEffect(() => {
-    // Let the AppContext route-sync effect resolve the URL on the first
-    // mount before AppContent is allowed to render a genuine 404.
     setInitialRouteResolved(true);
   }, []);
 
   const renderCurrentView = () => {
     switch (currentView) {
       case 'market-detail':
-        // On a hard refresh, remote marketplace data loads after the first
-        // render. Do not briefly show the 404 page while selectedMarket is
-        // still being resolved from the URL.
         return selectedMarket ? <MarketDetailView /> : !initialRouteResolved ? null : markets.length === 0 ? null : <NotFoundPage />;
       case 'category-detail':
-        // Categories are local/static, so selectedCategory is resolved by the
-        // route-sync effect immediately after mount. Avoid a one-frame 404.
         return selectedCategory ? <CategoryDetailView /> : !initialRouteResolved ? null : null;
       case 'shop-detail':
-        // Shop data is remote. During the initial refresh selectedShop is
-        // temporarily null, so wait for the route-sync effect before deciding
-        // that the URL is genuinely invalid.
         return selectedShop ? <ShopProfileView /> : !initialRouteResolved ? null : shops.length === 0 ? null : <NotFoundPage />;
       case 'product-detail':
         return selectedProduct ? <ProductDetailView /> : !initialRouteResolved ? null : products.length === 0 ? null : <NotFoundPage />;
@@ -112,74 +102,45 @@ const AppContent: React.FC = () => {
       case 'not-found':
         return <NotFoundPage />;
       case 'markets':
-        // Dedicated markets listing — just the grid, no hero or homepage
-        // sections. This is what the "Markets" nav tab now points to.
         return <MarketsGrid />;
       case 'home':
       default:
         return (
           <>
-            {/* 1. Hero Section (with search bar) */}
             <HeroMarkets />
-
-            {/* 2. Browse by Shops */}
             <BrowseByShops />
-
-            {/* 3. Browse by Categories */}
             <BrowseByCategories />
-            
-            {/* 3b. Flipkart/Meesho-style product recommendation rows — real,
-                 live products only (Recommended, Slippers, Clothes) */}
             <HomeProductShowcase />
-
-            {/* 4. About Us Banner Section */}
             <AboutUsSection />
           </>
         );
     }
+  };
 
   return (
     <div className="min-h-screen bg-[#F7F5F3] text-[#20243A] flex flex-col font-sans selection:bg-[#DDD4FF] selection:text-[#553BB8]">
-      
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[100] focus:rounded-full focus:bg-[#20243A] focus:px-4 focus:py-2 focus:text-white focus:font-bold">Skip to main content</a>
-      {/* Universal Header */}
       <SEO view={currentView} />
       <Analytics />
       <Header />
-
-      {/* Main Container */}
       <main id="main-content" tabIndex={-1} className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-4">
         <Suspense fallback={<ViewLoadingFallback />}>
           {renderCurrentView()}
         </Suspense>
       </main>
-
-      {/* Interactive Drawers & Overlays */}
       <MessagingDrawer />
       <CartDrawer />
       <AuthModal />
-
-      {/* Toast Notifications */}
       {toasts.length > 0 && (
         <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2 pointer-events-none">
           {toasts.map(t => (
-            <div 
-              key={t.id}
-              className="pointer-events-auto px-5 py-3 rounded-2xl bg-[#15192C] text-white text-xs sm:text-sm font-semibold shadow-2xl border border-white/20 animate-in slide-in-from-bottom-5 duration-200 flex items-center gap-3"
-              style={{
-                boxShadow: '0 12px 32px rgba(0,0,0,0.3)'
-              }}
-            >
-              <span className={`w-2 h-2 rounded-full animate-pulse ${
-                t.type === 'info' ? 'bg-[#38BDF8]' : t.type === 'warning' ? 'bg-[#FBBF24]' : t.type === 'error' ? 'bg-[#EF4444]' : 'bg-[#8067E8]'
-              }`} />
+            <div key={t.id} className="pointer-events-auto px-5 py-3 rounded-2xl bg-[#15192C] text-white text-xs sm:text-sm font-semibold shadow-2xl border border-white/20 animate-in slide-in-from-bottom-5 duration-200 flex items-center gap-3" style={{ boxShadow: '0 12px 32px rgba(0,0,0,0.3)' }}>
+              <span className={`w-2 h-2 rounded-full animate-pulse ${t.type === 'info' ? 'bg-[#38BDF8]' : t.type === 'warning' ? 'bg-[#FBBF24]' : t.type === 'error' ? 'bg-[#EF4444]' : 'bg-[#8067E8]'}`} />
               <span>{t.message}</span>
             </div>
           ))}
         </div>
       )}
-
-      {/* Universal Footer */}
       <Footer />
       <CookieConsent />
     </div>
