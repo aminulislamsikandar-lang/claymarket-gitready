@@ -522,7 +522,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const path = window.location.pathname.replace(/\/+$/, '') || '/';
       const view = pathToView(path);
       setCurrentView(view);
-      setActiveNavTab(view === 'shops' || view === 'shop-detail' ? 'shops' : view === 'categories' || view === 'category-detail' ? 'categories' : view === 'about' ? 'about' : 'markets');
+      setActiveNavTab(view === 'shops' || view === 'shop-detail' ? 'shops' : view === 'categories' || view === 'category-detail' ? 'categories' : view === 'about' ? 'about' : view === 'markets' || view === 'market-detail' ? 'markets' : 'home');
       const parts = path.split('/').filter(Boolean);
       const find = <T extends { id: string; slug?: string }>(items: T[], key?: string) => key ? items.find(item => item.id === key || item.slug === key) || null : null;
       if (view === 'market-detail') setSelectedMarket(find(markets, parts[1]) as Market | null);
