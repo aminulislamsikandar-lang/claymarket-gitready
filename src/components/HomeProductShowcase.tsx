@@ -9,18 +9,23 @@ import { ProductRow } from './ProductRecommendations';
 export const HomeProductShowcase: React.FC = () => {
   const { products, categories, navigateTo } = useApp();
 
-  const inStock = (p: (typeof products)[number]) => p.inStock !== false;
+  // Firestore data can briefly be unavailable while the app is loading.
+  // Keep this optional homepage section fail-safe so it can never prevent
+  // the original homepage from rendering.
+  const safeProducts = Array.isArray(products) ? products : [];
+  const safeCategories = Array.isArray(categories) ? categories : [];
+  const inStock = (p: (typeof safeProducts)[number]) => p?.inStock !== false;
 
-  const slippersCategory = categories.find(c => c.slug === 'slippers');
-  const clothesCategory = categories.find(c => c.slug === 'clothes');
+  const slippersCategory = safeCategories.find(c => c?.slug === 'slippers');
+  const clothesCategory = safeCategories.find(c => c?.slug === 'clothes');
 
-  const slippers = products.filter(p => p.categoryId === slippersCategory?.id && inStock(p));
-  const clothes = products.filter(p => p.categoryId === clothesCategory?.id && inStock(p));
+  const slippers = safeProducts.filter(p => p?.categoryId === slippersCategory?.id && inStock(p));
+  const clothes = safeProducts.filter(p => p?.categoryId === clothesCategory?.id && inStock(p));
 
   // "Recommended for you": highest-rated items first, across all categories.
-  const trending = [...products]
+  const trending = [...safeProducts]
     .filter(inStock)
-    .sort((a, b) => (b.rating || 0) - (a.rating || 0));
+    .sort((a, b) => (b?.rating || 0) - (a?.rating || 0));
 
   return (
     <>
