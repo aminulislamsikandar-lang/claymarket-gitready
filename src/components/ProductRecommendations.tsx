@@ -13,6 +13,9 @@ const ProductCard: React.FC<{ product: Product }> = ({ product }) => {
   const discountPct = hasDiscount
     ? Math.round(((product.originalPrice! - product.price!) / product.originalPrice!) * 100)
     : 0;
+  const imageSrc = Array.isArray(product.images) && product.images.length > 0
+    ? product.images[0]
+    : '';
 
   return (
     <div
@@ -22,13 +25,19 @@ const ProductCard: React.FC<{ product: Product }> = ({ product }) => {
     >
       {/* Image */}
       <div className="relative w-full aspect-square bg-[#F7F5F3] overflow-hidden">
-        <img
-          loading="lazy"
-          decoding="async"
-          src={product.images[0]}
-          alt={product.name}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-        />
+        {imageSrc ? (
+          <img
+            loading="lazy"
+            decoding="async"
+            src={imageSrc}
+            alt={product.name}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-xs font-semibold text-[#737B89]">
+            No image
+          </div>
+        )}
         <button
           onClick={(e) => { e.stopPropagation(); toggleWishlist(product.id); }}
           aria-label={isWishlisted(product.id) ? `Remove ${product.name} from wishlist` : `Add ${product.name} to wishlist`}
@@ -95,7 +104,7 @@ interface ProductRowProps {
 }
 
 export const ProductRow: React.FC<ProductRowProps> = ({ title, subtitle, products, onViewAll, maxItems = 10 }) => {
-  if (products.length === 0) return null;
+  if (!Array.isArray(products) || products.length === 0) return null;
   const items = products.slice(0, maxItems);
 
   return (
